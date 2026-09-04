@@ -4,12 +4,11 @@ This port runs one RV32E-AOT-compiled AtomVM module on the UIAPduino Pro Micro
 CH32V006 V1.1 Beta. The board has 63,488 usable flash bytes and 8 KiB SRAM, so
 this is a deliberately constrained AtomVM tier, not ESP32 feature parity.
 
-- [Getting started](GETTING_STARTED.md): build, flash, monitor, and create an
-  Elixir project
+- [Getting started](docs/getting-started.md): build, flash, monitor, and
+  create an Elixir project
 - [Elixir examples](../../../examples/elixir/ch32v006/README.md): LED blink and
   button input
-- [Design](DESIGN.md): AOT, ABI, memory, timing, and validation rationale
-- [Architecture decisions](docs/adr/README.md): durable platform boundaries
+- [Documentation](docs/README.md): design and architecture decisions
 
 ## Requirements
 

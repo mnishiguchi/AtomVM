@@ -1,9 +1,9 @@
 # CH32V006 platform design
 
 This document describes the current architecture of the CH32V006 AtomVM port.
-For build, flash, GPIO, and support details, see [README.md](README.md). For an
-end-to-end Elixir example, see [GETTING_STARTED.md](GETTING_STARTED.md).
-The durable decision record is in [docs/adr](docs/adr/README.md).
+For build, flash, GPIO, and support details, see [README.md](../README.md). For
+an end-to-end Elixir example, see [getting-started.md](getting-started.md).
+The durable decision record is in [ADRs](adr/README.md).
 
 ## Hardware constraints
 

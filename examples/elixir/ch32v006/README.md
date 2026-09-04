@@ -6,7 +6,7 @@
 
 Both examples target the one-module constrained runtime and use the blocking
 `:ch32v006.delay_ms/1` helper. For tool setup, firmware creation, flashing, and
-monitoring, follow the platform [getting-started guide](../../../src/platforms/ch32v006/GETTING_STARTED.md).
+monitoring, follow the platform [getting-started guide](../../../src/platforms/ch32v006/docs/getting-started.md).
 
 To try either file directly, compile it and pass its BEAM to the platform
 build. For example:

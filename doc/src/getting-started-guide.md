@@ -13,6 +13,7 @@ In order to do so, you will need to provision your device (depending on the devi
 The getting started is broken up into the following sections:
 
 * [Getting Started on the ESP32 platform](#getting-started-on-the-esp32-platform)
+* [Getting Started on the UIAPduino Pro Micro CH32V006 platform](#getting-started-on-the-uiapduino-pro-micro-ch32v006-platform)
 * [Getting Started on the STM32 platform](#getting-started-on-the-stm32-platform)
 * [Getting Started on the Raspberry Pi RP2](#getting-started-on-the-raspberry-pi-rp2)
 * [Getting Started on the Generic UNIX platform](#getting-started-on-the-generic-unix-platform)
@@ -194,6 +195,38 @@ When the AtomVM virtual machine starts, it will search for the first module that
 AtomVM applications can be written in Erlang or Elixir, or a combination of both.  The AtomVM community has provided tooling for both platforms, making deployment of AtomVM applications as seamless as possible.
 
 For information about how to flash your application to your ESP32, see the [AtomVM Tooling](./atomvm-tooling.md#esp32) chapter.
+
+## Getting Started on the UIAPduino Pro Micro CH32V006 platform
+
+AtomVM supports the UIAPduino Pro Micro CH32V006 V1.1 Beta as a constrained
+RV32E native-image target. Its 62 KiB flash and 8 KiB SRAM do not accommodate
+the regular interpreter, core library archive, or a separate user-application
+partition. Instead, each complete firmware image contains AtomVM and one
+precompiled Erlang module exporting `start/0`.
+
+Build or download an `AtomVM-uiapduino-pro-micro-ch32v006-<version>.bin` image.
+Connect the board through its onboard UIAP programmer, which appears as USB
+VID:PID `1209:b806`, and flash the image with minichlink:
+
+```shell
+$ minichlink -c 0x1209b806 -C funprog \
+    -w AtomVM-uiapduino-pro-micro-ch32v006-0.8.0.bin flash -b
+```
+
+Open the SWIO console with:
+
+```shell
+$ minichlink -c 0x1209b806 -C funprog -T
+```
+
+The release image runs the bundled PC3 LED example. Deploying another
+application requires rebuilding the complete image with `START_SOURCE` or
+`START_BEAM_INPUT`; see the [CH32V006 build instructions](./build-instructions.md#building-for-uiapduino-pro-micro-ch32v006).
+
+The constrained target currently supports one embedded module and process,
+the documented arithmetic and container subset, catchable errors, and direct
+GPIO NIFs. It does not provide the full ESP32 AtomVM API surface, networking,
+ports, SMP, dynamic modules, or AVM archives.
 
 ## Getting Started on the STM32 platform
 

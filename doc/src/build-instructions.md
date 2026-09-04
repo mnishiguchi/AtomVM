@@ -89,6 +89,7 @@ It is possible to use a local copy of `uf2tool` source code by setting `UF2TOOL_
 
 * [Generic UNIX](#building-for-generic-unix)
 * [ESP32](#building-for-esp32)
+* [UIAPduino Pro Micro CH32V006](#building-for-uiapduino-pro-micro-ch32v006)
 * [STM32](#building-for-stm32)
 * [RP2](#building-for-rp2) (including Pico boards)
 * [WASM](#building-for-emscripten) (NodeJS or web)
@@ -803,6 +804,56 @@ To add support for a new peripheral or protocol using an AtomVM port, you need t
         REGISTER_PORT_DRIVER(my_port, my_port_init, NULL, my_port_create_port);
     ```
 
+
+## Building for UIAPduino Pro Micro CH32V006
+
+The UIAPduino Pro Micro CH32V006 V1.1 Beta has 62 KiB of usable flash, 8 KiB
+of SRAM, and an RV32E core. AtomVM therefore uses a constrained native-only
+runtime with one AOT-precompiled startup module rather than the interpreter and
+separate application partitions used by larger platforms.
+
+### CH32V006 prerequisites
+
+- Erlang/OTP 28
+- `riscv64-unknown-elf-gcc` and binutils with RV32E support
+- newlib headers
+- GNU Make
+- [ch32fun](https://github.com/cnlohr/ch32fun)
+
+The release workflow pins ch32fun revision
+`618bba58c615ed29dc99e6ea92d869c914b6a8c0`. Set `CH32FUN` to its inner
+`ch32fun` directory:
+
+```shell
+$ cd src/platforms/ch32v006
+$ make CH32FUN=/path/to/ch32fun/ch32fun
+```
+
+The default `image` target checks the flash limit and RV32E ELF ABI and writes
+the complete BIN, HEX, ELF, and SHA-256 artifacts under `build/images`.
+
+Each firmware contains exactly one startup module exporting `start/0`. Supply
+an application as Erlang source or as an already compiled BEAM:
+
+```shell
+$ make CH32FUN=/path/to/ch32fun/ch32fun \
+    START_SOURCE=/path/to/my_app.erl image
+$ make CH32FUN=/path/to/ch32fun/ch32fun \
+    START_BEAM_INPUT=/path/to/my_app.beam image
+```
+
+Build the three CI/qualification profiles with
+`make CH32FUN=/path/to/ch32fun/ch32fun acceptance-images`. Build a release-
+named BIN and checksum with:
+
+```shell
+$ make CH32FUN=/path/to/ch32fun/ch32fun \
+    ATOMVM_VERSION=0.8.0 release-image
+```
+
+For the complete supported language boundary, GPIO pin encoding, protected
+pins, artifact names, and UIAP programmer recovery procedure, see the
+[platform README](../../src/platforms/ch32v006/README.md).
 
 ## Building for STM32
 

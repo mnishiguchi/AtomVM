@@ -168,7 +168,7 @@ html_context['display_lower_left'] = 'True'
 from git import Repo
 repo = Repo( search_parent_directories=True )
 tag_list = sorted(repo.tags, key=lambda t: t.commit.committed_datetime)
-latest_tag = tag_list[-1]
+latest_tag = tag_list[-1] if tag_list else None
 versions = list()
 release_list = list()
 omit_tag_list = [ 'v0.6.0-alpha.0', 'v0.6.0-alpha.1', 'v0.6.0-alpha.2', 'v0.6.0-beta.0', 'v0.6.0-beta.1', 'v0.6.0-rc.0' ]
@@ -185,7 +185,7 @@ for branch in branch_list:
         if branch.name.startswith(allowed_branch_prefixes):
             versions.append(branch.name)
 
-if ((repo.head.object.hexsha) == (latest_tag.commit.hexsha)):
+if latest_tag is not None and ((repo.head.object.hexsha) == (latest_tag.commit.hexsha)):
     current_version = latest_tag.name
     download_version = current_version
 else:

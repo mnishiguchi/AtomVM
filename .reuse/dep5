@@ -5,3 +5,11 @@ Source: https://github.com/atomvm/AtomVM
 Files: CHANGELOG.md
 Copyright: AtomVM Contributors
 License: CC0-1.0
+
+Files: .github/workflows/ch32v006-build.yaml
+       examples/elixir/ch32v006/*
+       libs/jit/src/jit_riscv32e.erl
+       src/platforms/ch32v006/*
+       tests/libs/jit/jit_riscv32e_tests.erl
+Copyright: 2026 Masatoshi Nishiguchi
+License: Apache-2.0 OR LGPL-2.1-or-later

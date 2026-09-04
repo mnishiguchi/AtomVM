@@ -17,6 +17,7 @@ Supported Platforms
 
 * Linux, macOS, FreeBSD, DragonFly ([generic_unix](https://doc.atomvm.org/main/getting-started-guide.html#getting-started-on-the-generic-unix-platform))
 * ESP32 SoC (with IDF/FreeRTOS, see [esp32](https://doc.atomvm.org/main/getting-started-guide.html#getting-started-on-the-esp32-platform))
+* UIAPduino Pro Micro CH32V006 (constrained RV32E native image, see [CH32V006](https://doc.atomvm.org/main/getting-started-guide.html#getting-started-on-the-uiapduino-pro-micro-ch32v006-platform))
 * STM32 MCUs (with official ST HAL/LL SDK, see [stm32](https://doc.atomvm.org/main/getting-started-guide.html#getting-started-on-the-stm32-platform))
 * Raspberry Pi Pico and Pico 2 (see [rp2](https://doc.atomvm.org/main/getting-started-guide.html#getting-started-on-the-raspberry-pi-pico-platform))
 * Browsers and NodeJS with WebAssembly (see [emscripten](https://doc.atomvm.org/main/getting-started-guide.html#getting-started-with-atomvm-webassembly))
@@ -70,6 +71,7 @@ Complete [Build Instructions](https://doc.atomvm.org/main/build-instructions.htm
 available in the documentation for
 [Generic UNIX](https://doc.atomvm.org/main/build-instructions.html) (Linux, MacOS, FreeBSD, DragonFly),
 [ESP32](https://doc.atomvm.org/main/build-instructions.html#building-for-esp32),
+[UIAPduino Pro Micro CH32V006](https://doc.atomvm.org/main/build-instructions.html#building-for-uiapduino-pro-micro-ch32v006),
 [STM32](https://doc.atomvm.org/main/build-instructions.html#building-for-stm32),
 [Raspberry Pi Pico and Pico 2](https://doc.atomvm.org/main/build-instructions.html#building-for-raspberry-pi-pico)
 (rp2), and

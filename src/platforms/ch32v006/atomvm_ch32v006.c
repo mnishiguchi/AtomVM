@@ -1,0 +1,82 @@
+/*
+ * This file is part of AtomVM.
+ *
+ * SPDX-License-Identifier: Apache-2.0 OR LGPL-2.1-or-later
+ */
+
+#include <stdio.h>
+
+#include <ch32fun.h>
+
+#include <globalcontext.h>
+#include <module.h>
+
+#include "ch32v006_time.h"
+
+#define LED_BUILTIN PC3
+
+extern const uint8_t atomvm_start_beam[];
+extern const uint8_t atomvm_start_beam_end[];
+void platform_stack_guard_init(void);
+bool platform_stack_guard_ok(void);
+#ifdef AVM_CH32V006_SELF_TEST
+bool ch32v006_run_abi_canary(void);
+void platform_stack_probe_start(void);
+#endif
+
+static void show_result(bool success)
+{
+    while (1) {
+        funDigitalWrite(LED_BUILTIN, FUN_HIGH);
+        Delay_Ms(success ? 100 : 600);
+        funDigitalWrite(LED_BUILTIN, FUN_LOW);
+        Delay_Ms(success ? 900 : 400);
+    }
+}
+
+int main(void)
+{
+    SystemInit();
+    funGpioInitAll();
+    funPinMode(LED_BUILTIN, GPIO_Speed_10MHz | GPIO_CNF_OUT_PP);
+    platform_stack_guard_init();
+    ch32v006_time_init();
+
+#ifdef AVM_CH32V006_SELF_TEST
+    platform_stack_probe_start();
+#endif
+
+    printf("AVM CH32V006 boot\n");
+#ifdef AVM_CH32V006_SELF_TEST
+    if (!ch32v006_time_self_test()) {
+        printf("FAIL SysTick time\n");
+        show_result(false);
+    }
+    printf("SysTick time ok\n");
+    if (!ch32v006_run_abi_canary()) {
+        printf("FAIL RV32E ABI\n");
+        show_result(false);
+    }
+    printf("RV32E ABI ok\n");
+#endif
+
+    GlobalContext *global = globalcontext_new();
+    if (!global) {
+        printf("FAIL globalcontext_new\n");
+        show_result(false);
+    }
+    size_t beam_size = (size_t) (atomvm_start_beam_end - atomvm_start_beam);
+    Module *module = module_new_from_iff_binary(global, atomvm_start_beam, beam_size);
+    if (!module || globalcontext_insert_module(global, module) < 0) {
+        printf("FAIL module load\n");
+        show_result(false);
+    }
+
+    run_result_t result = globalcontext_run(global, module, NULL, 0, NULL);
+    bool success = result == RUN_SUCCESS && platform_stack_guard_ok();
+    if (!platform_stack_guard_ok()) {
+        printf("FAIL C stack guard\n");
+    }
+    printf("%s\n", success ? "ok" : "error");
+    show_result(success);
+}

@@ -1,0 +1,143 @@
+#
+# SPDX-FileCopyrightText: AtomVM Contributors
+# SPDX-License-Identifier: Apache-2.0 OR LGPL-2.1-or-later
+#
+
+name: CH32V006 Build
+
+on:
+  push:
+    paths:
+      - '.github/workflows/ch32v006-build.yaml'
+      - 'CMakeLists.txt'
+      - 'examples/elixir/ch32v006/**'
+      - 'libs/jit/**'
+      - 'src/libAtomVM/**'
+      - 'src/platforms/ch32v006/**'
+      - 'version.cmake'
+  pull_request:
+    paths:
+      - '.github/workflows/ch32v006-build.yaml'
+      - 'CMakeLists.txt'
+      - 'examples/elixir/ch32v006/**'
+      - 'libs/jit/**'
+      - 'src/libAtomVM/**'
+      - 'src/platforms/ch32v006/**'
+      - 'version.cmake'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref != 'refs/heads/main' && github.ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  uiapduino-pro-micro-ch32v006:
+    runs-on: ubuntu-24.04
+
+    env:
+      CH32FUN_REVISION: 618bba58c615ed29dc99e6ea92d869c914b6a8c0
+
+    steps:
+      - name: Checkout AtomVM
+        uses: actions/checkout@v6
+
+      - name: Install Erlang/OTP and Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: '28'
+          elixir-version: '1.19'
+
+      - name: Install RISC-V build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            binutils-riscv64-unknown-elf \
+            gcc-riscv64-unknown-elf \
+            libnewlib-dev \
+            make
+
+      - name: Checkout pinned ch32fun
+        env:
+          CH32FUN_ROOT: ${{ runner.temp }}/ch32fun
+        run: |
+          git clone --filter=blob:none https://github.com/cnlohr/ch32fun.git "$CH32FUN_ROOT"
+          git -C "$CH32FUN_ROOT" checkout "$CH32FUN_REVISION"
+
+      - name: Select artifact version
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: echo "AVM_IMAGE_VERSION=${REF_NAME//\//-}" >> "$GITHUB_ENV"
+
+      - name: Build release and acceptance images
+        working-directory: src/platforms/ch32v006
+        env:
+          CH32FUN_ROOT: ${{ runner.temp }}/ch32fun
+        run: |
+          make CH32FUN="$CH32FUN_ROOT/ch32fun" clean
+          make CH32FUN="$CH32FUN_ROOT/ch32fun" acceptance-images
+          make CH32FUN="$CH32FUN_ROOT/ch32fun" \
+            ATOMVM_VERSION="$AVM_IMAGE_VERSION" release-image
+
+      - name: Build Elixir examples
+        working-directory: src/platforms/ch32v006
+        env:
+          CH32FUN_ROOT: ${{ runner.temp }}/ch32fun
+        run: |
+          mkdir -p build/elixir-examples
+          elixirc -o build/elixir-examples \
+            ../../../examples/elixir/ch32v006/Blink.ex \
+            ../../../examples/elixir/ch32v006/Button.ex
+          make CH32FUN="$CH32FUN_ROOT/ch32fun" \
+            START_BEAM_INPUT=build/elixir-examples/Elixir.Blink.beam \
+            IMAGE_BASENAME=AtomVM-uiapduino-pro-micro-ch32v006-elixir-blink image
+          make CH32FUN="$CH32FUN_ROOT/ch32fun" \
+            START_BEAM_INPUT=build/elixir-examples/Elixir.Button.beam \
+            IMAGE_BASENAME=AtomVM-uiapduino-pro-micro-ch32v006-elixir-button image
+
+      - name: Verify release checksum and ELF ABI
+        working-directory: src/platforms/ch32v006
+        run: |
+          cd build/release
+          sha256sum -c "AtomVM-uiapduino-pro-micro-ch32v006-${AVM_IMAGE_VERSION}.bin.sha256"
+          cd ../images
+          riscv64-unknown-elf-readelf -h AtomVM-uiapduino-pro-micro-ch32v006.elf \
+            | grep -F 'RISC-V'
+          riscv64-unknown-elf-readelf -h AtomVM-uiapduino-pro-micro-ch32v006.elf \
+            | grep -F 'RVE'
+
+      - name: Upload CH32V006 images
+        uses: actions/upload-artifact@v4
+        with:
+          name: AtomVM-uiapduino-pro-micro-ch32v006-${{ env.AVM_IMAGE_VERSION }}
+          path: |
+            src/platforms/ch32v006/build/release/*
+            src/platforms/ch32v006/build/images/*
+          if-no-files-found: error
+
+  release-uiapduino-pro-micro-ch32v006:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: uiapduino-pro-micro-ch32v006
+    runs-on: ubuntu-24.04
+
+    permissions:
+      actions: read
+      contents: write
+
+    steps:
+      - name: Download CH32V006 images
+        uses: actions/download-artifact@v4
+        with:
+          name: AtomVM-uiapduino-pro-micro-ch32v006-${{ github.ref_name }}
+          path: ch32v006-artifacts
+
+      - name: Add CH32V006 image to draft release
+        uses: softprops/action-gh-release@v3.0.0
+        with:
+          draft: true
+          fail_on_unmatched_files: true
+          files: |
+            ch32v006-artifacts/release/AtomVM-uiapduino-pro-micro-ch32v006-${{ github.ref_name }}.bin
+            ch32v006-artifacts/release/AtomVM-uiapduino-pro-micro-ch32v006-${{ github.ref_name }}.bin.sha256

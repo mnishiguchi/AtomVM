@@ -199,7 +199,8 @@ qualification.
 Hello World, GPIO output, and polled GPIO input are qualified today. GPIO
 interrupts, timers, PWM, ADC, UART, I2C, SPI, and a combined application remain
 future work. Each capability should be selected explicitly at compile time so
-unused drivers do not consume the fixed flash and SRAM budgets.
+unused drivers do not consume the fixed flash and SRAM budgets. See the
+[platform roadmap](roadmap.md) for the intended qualification order and gates.
 
 ## Design boundary
 

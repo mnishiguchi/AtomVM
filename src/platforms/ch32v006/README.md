@@ -8,7 +8,7 @@ this is a deliberately constrained AtomVM tier, not ESP32 feature parity.
   create an Elixir project
 - [Elixir examples](../../../examples/elixir/ch32v006/README.md): LED blink and
   button input
-- [Documentation](docs/README.md): design and architecture decisions
+- [Documentation](docs/README.md): design, roadmap, and architecture decisions
 
 ## Requirements
 

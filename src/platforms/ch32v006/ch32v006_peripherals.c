@@ -22,6 +22,34 @@
 #define CH32V006_IO_TIMEOUT 100000U
 #define CH32V006_MAX_IO_BYTES 64U
 
+#if defined(AVM_CH32V006_UART) || defined(AVM_CH32V006_ADC) || defined(AVM_CH32V006_I2C) || defined(AVM_CH32V006_SPI)
+static bool wait_register_set(volatile uint32_t *reg, uint32_t mask)
+{
+    uint32_t timeout = CH32V006_IO_TIMEOUT;
+    while ((*reg & mask) == 0U) {
+        if (timeout == 0U) {
+            return false;
+        }
+        --timeout;
+    }
+    return true;
+}
+#endif
+
+#if defined(AVM_CH32V006_I2C) || defined(AVM_CH32V006_SPI)
+static bool wait_register_clear(volatile uint32_t *reg, uint32_t mask)
+{
+    uint32_t timeout = CH32V006_IO_TIMEOUT;
+    while ((*reg & mask) != 0U) {
+        if (timeout == 0U) {
+            return false;
+        }
+        --timeout;
+    }
+    return true;
+}
+#endif
+
 #define DEFINE_NIF(name)                                          \
     static const struct Nif name##_nif                            \
         __attribute__((section(".rodata.ch32v006_nifs")))         \
@@ -29,6 +57,7 @@
               .base.type = NIFFunctionType, .nif_ptr = nif_##name \
           }
 
+#if defined(AVM_CH32V006_I2C) || defined(AVM_CH32V006_SPI)
 static term make_binary(Context *ctx, size_t size, uint8_t **data)
 {
     if (size > CH32V006_MAX_IO_BYTES
@@ -40,6 +69,7 @@ static term make_binary(Context *ctx, size_t size, uint8_t **data)
     *data = (uint8_t *) term_binary_data(binary);
     return binary;
 }
+#endif
 
 #ifdef AVM_CH32V006_UART
 static void uart1_init(uint32_t baud)
@@ -82,15 +112,15 @@ static term nif_uart_write(Context *ctx, int argc, term argv[])
     }
     const uint8_t *data = (const uint8_t *) term_binary_data(argv[0]);
     for (size_t i = 0; i < size; ++i) {
-        uint32_t timeout = CH32V006_IO_TIMEOUT;
-        while ((USART1->STATR & USART_STATR_TXE) == 0U && timeout-- > 0U) {
-        }
-        if (timeout == 0U) {
+        if (!wait_register_set(&USART1->STATR, USART_STATR_TXE)) {
             return ERROR_ATOM;
         }
         USART1->DATAR = data[i];
     }
-    return term_from_int((avm_int_t) size);
+
+    return wait_register_set(&USART1->STATR, USART_STATR_TC)
+        ? term_from_int((avm_int_t) size)
+        : ERROR_ATOM;
 }
 
 static term nif_uart_read(Context *ctx, int argc, term argv[])
@@ -152,10 +182,7 @@ static term nif_adc_read(Context *ctx, int argc, term argv[])
     ADC1->SAMPTR2 |= 7U << (3U * (uint32_t) channel);
     ADC1->CTLR2 |= ADC_FLAG_STRT;
 
-    uint32_t timeout = CH32V006_IO_TIMEOUT;
-    while ((ADC1->STATR & ADC_EOC) == 0U && timeout-- > 0U) {
-    }
-    if (timeout == 0U) {
+    if (!wait_register_set(&ADC1->STATR, ADC_EOC)) {
         return ERROR_ATOM;
     }
     return term_from_int((avm_int_t) ADC1->RDATAR);
@@ -170,6 +197,17 @@ DEFINE_NIF(adc_read);
 #define I2C_EVENT_MASTER_RECEIVER_SELECTED UINT32_C(0x00030002)
 #define I2C_EVENT_MASTER_BYTE_TRANSMITTED UINT32_C(0x00070084)
 
+static uint32_t i2c_clock_hz;
+
+static void i2c_setup(uint32_t clock_hz);
+
+static void i2c_recover(void)
+{
+    if (i2c_clock_hz != 0U) {
+        i2c_setup(i2c_clock_hz);
+    }
+}
+
 static uint32_t i2c_event(void)
 {
     uint32_t status1 = I2C1->STAR1;
@@ -180,21 +218,27 @@ static uint32_t i2c_event(void)
 static bool i2c_wait_event(uint32_t event)
 {
     uint32_t timeout = CH32V006_IO_TIMEOUT;
-    while ((i2c_event() & event) != event && timeout-- > 0U) {
+    while ((i2c_event() & event) != event) {
         if ((I2C1->STAR1 & I2C_STAR1_AF) != 0U) {
             I2C1->STAR1 &= ~I2C_STAR1_AF;
             return false;
         }
+        if (timeout == 0U) {
+            i2c_recover();
+            return false;
+        }
+        --timeout;
     }
-    return timeout != 0U;
+    return true;
 }
 
 static bool i2c_wait_idle(void)
 {
-    uint32_t timeout = CH32V006_IO_TIMEOUT;
-    while ((I2C1->STAR2 & I2C_STAR2_BUSY) != 0U && timeout-- > 0U) {
+    if (!wait_register_clear(&I2C1->STAR2, I2C_STAR2_BUSY)) {
+        i2c_recover();
+        return false;
     }
-    return timeout != 0U;
+    return true;
 }
 
 static void i2c_stop(void)
@@ -205,6 +249,7 @@ static void i2c_stop(void)
 
 static void i2c_setup(uint32_t clock_hz)
 {
+    i2c_clock_hz = clock_hz;
     RCC->APB1PCENR |= RCC_APB1Periph_I2C1;
     RCC->APB2PCENR |= RCC_APB2Periph_GPIOC | RCC_APB2Periph_AFIO;
     funPinMode(PC1, GPIO_CFGLR_OUT_10Mhz_AF_OD);
@@ -212,6 +257,8 @@ static void i2c_setup(uint32_t clock_hz)
 
     RCC->APB1PRSTR |= RCC_APB1Periph_I2C1;
     RCC->APB1PRSTR &= ~RCC_APB1Periph_I2C1;
+    I2C1->CTLR1 |= I2C_CTLR1_SWRST;
+    I2C1->CTLR1 &= ~I2C_CTLR1_SWRST;
 
     uint32_t peripheral_clock_mhz = FUNCONF_SYSTEM_CORE_CLOCK / 1000000U;
     I2C1->CTLR2 = (I2C1->CTLR2 & ~I2C_CTLR2_FREQ) | (peripheral_clock_mhz & I2C_CTLR2_FREQ);
@@ -245,11 +292,9 @@ static bool i2c_write_bytes(uint8_t address, const uint8_t *data, size_t size)
         return false;
     }
     for (size_t i = 0; i < size; ++i) {
-        uint32_t timeout = CH32V006_IO_TIMEOUT;
-        while ((I2C1->STAR1 & I2C_STAR1_TXE) == 0U && timeout-- > 0U) {
-        }
-        if (timeout == 0U) {
+        if (!wait_register_set(&I2C1->STAR1, I2C_STAR1_TXE)) {
             i2c_stop();
+            i2c_recover();
             return false;
         }
         I2C1->DATAR = data[i];
@@ -274,21 +319,27 @@ static bool i2c_start_read_address(uint8_t address)
     I2C1->DATAR = ((uint32_t) address << 1) | 1U;
 
     uint32_t timeout = CH32V006_IO_TIMEOUT;
-    while ((I2C1->STAR1 & I2C_STAR1_ADDR) == 0U && timeout-- > 0U) {
+    while ((I2C1->STAR1 & I2C_STAR1_ADDR) == 0U) {
         if ((I2C1->STAR1 & I2C_STAR1_AF) != 0U) {
             I2C1->STAR1 &= ~I2C_STAR1_AF;
             return false;
         }
+        if (timeout == 0U) {
+            i2c_recover();
+            return false;
+        }
+        --timeout;
     }
-    return timeout != 0U;
+    return true;
 }
 
 static bool i2c_wait_status1(uint32_t mask)
 {
-    uint32_t timeout = CH32V006_IO_TIMEOUT;
-    while ((I2C1->STAR1 & mask) == 0U && timeout-- > 0U) {
+    if (!wait_register_set(&I2C1->STAR1, mask)) {
+        i2c_recover();
+        return false;
     }
-    return timeout != 0U;
+    return true;
 }
 
 static void i2c_clear_addr(void)
@@ -510,22 +561,17 @@ static term nif_spi_transfer(Context *ctx, int argc, term argv[])
     }
 
     for (size_t i = 0; i < size; ++i) {
-        uint32_t timeout = CH32V006_IO_TIMEOUT;
-        while ((SPI1->STATR & SPI_STATR_TXE) == 0U && timeout-- > 0U) {
-        }
-        if (timeout == 0U) {
+        if (!wait_register_set(&SPI1->STATR, SPI_STATR_TXE)) {
             return ERROR_ATOM;
         }
         SPI1->DATAR = tx[i];
-        timeout = CH32V006_IO_TIMEOUT;
-        while ((SPI1->STATR & SPI_STATR_RXNE) == 0U && timeout-- > 0U) {
-        }
-        if (timeout == 0U) {
+        if (!wait_register_set(&SPI1->STATR, SPI_STATR_RXNE)) {
             return ERROR_ATOM;
         }
         rx[i] = (uint8_t) SPI1->DATAR;
     }
-    return binary;
+
+    return wait_register_clear(&SPI1->STATR, SPI_STATR_BSY) ? binary : ERROR_ATOM;
 }
 
 DEFINE_NIF(spi_init);
@@ -618,6 +664,22 @@ static const AtomStringIntPair interrupt_edge_table[] = {
     SELECT_INT_DEFAULT(-1)
 };
 
+static void gpio_irq_clear_pending(uint32_t line)
+{
+    NVIC_DisableIRQ(EXTI7_0_IRQn);
+    gpio_irq_pending &= (uint8_t) ~line;
+    NVIC_EnableIRQ(EXTI7_0_IRQn);
+}
+
+static bool gpio_irq_take_pending(uint32_t line)
+{
+    NVIC_DisableIRQ(EXTI7_0_IRQn);
+    bool pending = (gpio_irq_pending & line) != 0U;
+    gpio_irq_pending &= (uint8_t) ~line;
+    NVIC_EnableIRQ(EXTI7_0_IRQn);
+    return pending;
+}
+
 static bool irq_pin(term pin_term, int32_t *pin, uint32_t *line, uint32_t *port)
 {
     if (!term_is_integer(pin_term)) {
@@ -680,7 +742,7 @@ static term nif_gpio_set_pin_interrupt(Context *ctx, int argc, term argv[])
         EXTI->FTENR |= line;
     }
     EXTI->INTFR = line;
-    gpio_irq_pending &= (uint8_t) ~line;
+    gpio_irq_clear_pending(line);
     NVIC_EnableIRQ(EXTI7_0_IRQn);
     return OK_ATOM;
 }
@@ -700,7 +762,10 @@ static term nif_gpio_clear_pin_interrupt(Context *ctx, int argc, term argv[])
     EXTI->RTENR &= ~line;
     EXTI->FTENR &= ~line;
     EXTI->INTFR = line;
-    gpio_irq_pending &= (uint8_t) ~line;
+    gpio_irq_clear_pending(line);
+    if ((EXTI->INTENR & UINT32_C(0xFF)) == 0U) {
+        NVIC_DisableIRQ(EXTI7_0_IRQn);
+    }
     return OK_ATOM;
 }
 
@@ -715,11 +780,7 @@ static term nif_gpio_interrupt_pending(Context *ctx, int argc, term argv[])
     }
     UNUSED(pin);
     UNUSED(port);
-    if ((gpio_irq_pending & line) != 0U) {
-        gpio_irq_pending &= (uint8_t) ~line;
-        return TRUE_ATOM;
-    }
-    return FALSE_ATOM;
+    return gpio_irq_take_pending(line) ? TRUE_ATOM : FALSE_ATOM;
 }
 
 DEFINE_NIF(gpio_set_pin_interrupt);

@@ -256,6 +256,9 @@
 %% PARAMETER_REGS includes a0-a7 because the calling convention places
 %% ctx, jit_state, and native_interface in a0-a2 respectively.
 -define(PARAMETER_REGS, [a0, a1, a2, a3, a4, a5, a6, a7]).
+-define(FAR_BRANCH_REG, t6).
+-define(AVAILABLE_REGS_COUNT, 7).
+-define(STACK_ALIGNMENT_BYTES, 16).
 
 -define(REG_BIT_A0, (1 bsl 0)).
 -define(REG_BIT_A1, (1 bsl 1)).
@@ -305,6 +308,9 @@
 
 -spec word_size() -> 4 | 8.
 word_size() -> 8.
+
+prepare_call_args(Args) ->
+    Args.
 
 div_(
     #state{stream_module = StreamModule, stream = Stream0, regs = Regs0} = State,

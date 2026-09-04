@@ -124,7 +124,15 @@ prepare_call_scratch(Args) ->
     ArgsRegs = args_regs(Args),
     ParamMask = jit_regs:regs_to_mask(ParamRegs, fun reg_bit/1),
     ArgsMask = jit_regs:regs_to_mask(ArgsRegs, fun reg_bit/1),
-    ScratchMask = ?AVAILABLE_REGS_MASK band (bnot (ArgsMask bor ParamMask)),
+    ScratchMask0 = ?AVAILABLE_REGS_MASK band (bnot (ArgsMask bor ParamMask)),
+    ScratchMask =
+        case ScratchMask0 of
+            0 ->
+                jit_regs:regs_to_mask(?PARAMETER_REGS, fun reg_bit/1) band
+                    (bnot (ArgsMask bor ParamMask));
+            _ ->
+                ScratchMask0
+        end,
     Temp = first_avail(ScratchMask),
     AvailableMask = ScratchMask band (bnot reg_bit(Temp)),
     UsedMask = ?AVAILABLE_REGS_MASK band (bnot AvailableMask),

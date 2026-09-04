@@ -37,6 +37,7 @@
 %% The backend module must also define these callback functions:
 %%   handle_avm_int64_t/7 - handles {avm_int64_t, Value} in set_registers_args0
 %%   parameter_regs0_avm_int64_t/3 - handles {avm_int64_t, _} in parameter_regs0
+%%   prepare_call_args/1 - expands arguments as required by the target ABI
 
 %%-----------------------------------------------------------------------------
 new(Variant, StreamModule, Stream) ->
@@ -166,8 +167,7 @@ patch_branch(StreamModule, Stream, Offset, Type, LabelOffset) ->
                         DirectBranch = ?ASM:jal(zero, Rel),
                         case byte_size(DirectBranch) of
                             2 ->
-                                <<DirectBranch/binary, (?ASM:c_nop())/binary,
-                                    (?ASM:nop())/binary>>;
+                                <<DirectBranch/binary, (?ASM:c_nop())/binary, (?ASM:nop())/binary>>;
                             4 ->
                                 <<DirectBranch/binary, (?ASM:nop())/binary>>
                         end;
@@ -309,14 +309,24 @@ call_primitive(
 %%-----------------------------------------------------------------------------
 %% @doc Emit a jump (call without return) to a primitive with arguments. This
 %% function converts arguments and pass them following the backend ABI
-%% convention.
+%% convention. Calls that require outgoing stack arguments fall back to a
+%% regular call followed by a return so the stack can be restored first.
 %% @end
 %% @param State current backend state
 %% @param Primitive index to the primitive to call
 %% @param Args arguments to pass to the primitive
 %% @return Updated backend state
 %%-----------------------------------------------------------------------------
-call_primitive_last(
+call_primitive_last(State0, Primitive, Args) ->
+    PreparedArgs = prepare_call_args(Args),
+    case length(PreparedArgs) =< length(?PARAMETER_REGS) of
+        true ->
+            call_primitive_last_registers_only(State0, Primitive, PreparedArgs);
+        false ->
+            call_primitive_last_with_stack(State0, Primitive, Args)
+    end.
+
+call_primitive_last_registers_only(
     #state{
         stream_module = StreamModule,
         stream = Stream0
@@ -350,12 +360,9 @@ call_primitive_last(
         Args
     ),
 
-    % In RISC-V, all up to 8 arguments fit in registers (a0-a7)
-    % Always use tail call when calling primitives in tail position
     State4 =
         case Args1 of
             [FirstArg, jit_state | ArgsT] ->
-                % Use tail call
                 ArgsForTailCall = [FirstArg, jit_state_tail_call | ArgsT],
                 State2 = set_registers_args(State1, ArgsForTailCall, 0),
                 tail_call_with_jit_state_registers_only(State2, Temp)
@@ -366,10 +373,30 @@ call_primitive_last(
         )
     }.
 
+call_primitive_last_with_stack(
+    #state{stream_module = StreamModule} = State0,
+    Primitive,
+    Args
+) ->
+    {State1, ResultReg} = call_primitive(State0, Primitive, Args),
+    MoveResult =
+        case ResultReg of
+            a0 -> <<>>;
+            _ -> ?ASM:mv(a0, ResultReg)
+        end,
+    Return = ?ASM:ret(),
+    Stream1 = StreamModule:append(State1#state.stream, <<MoveResult/binary, Return/binary>>),
+    State1#state{
+        stream = Stream1,
+        regs = jit_regs:set_masks(
+            jit_regs:unreachable(State1#state.regs), ?AVAILABLE_REGS_MASK, 0
+        )
+    }.
+
 %%-----------------------------------------------------------------------------
-%% @doc Tail call to address in register.
-%% RA is preserved across regular calls (call_func_ptr saves/restores it),
-%% so when the called C primitive returns, it returns to opcodesswitch.h.
+%% @doc Tail call to address in register when every argument fits in argument
+%% registers. The caller's RA is left intact, so the C primitive returns
+%% directly to opcodesswitch.h.
 %% @end
 %% @param State current backend state
 %% @param Reg register containing the target address
@@ -469,7 +496,12 @@ jump_to_continuation(
     {free, OffsetReg}
 ) ->
     Available = jit_regs:available_regs(Regs0),
-    Temp = first_avail(Available),
+    TempMask =
+        case Available of
+            0 -> ?AVAILABLE_REGS_MASK band (bnot reg_bit(OffsetReg));
+            _ -> Available
+        end,
+    Temp = first_avail(TempMask),
     % Calculate absolute address: native_code_base + target_offset
     % where native_code_base = current_pc + (BaseOffset - CurrentStreamOffset)
     CurrentStreamOffset = StreamModule:offset(Stream0),
@@ -502,8 +534,11 @@ branch_to_offset_code(
     #state{regs = Regs0}, Offset, TargetOffset
 ) ->
     Available = jit_regs:available_regs(Regs0),
-    true = Available =/= 0,
-    TempReg = first_avail(Available),
+    TempReg =
+        case Available of
+            0 -> ?FAR_BRANCH_REG;
+            _ -> first_avail(Available)
+        end,
     % Far branch: use auipc + jalr sequence for PC-relative addressing
     % This computes: PC + Immediate and jumps to it
 
@@ -536,11 +571,12 @@ branch_to_label_code(
     Available = jit_regs:available_regs(Regs0),
     TempReg =
         case Available of
-            0 -> t6;
+            0 -> ?FAR_BRANCH_REG;
             _ -> first_avail(Available)
         end,
     % RISC-V: Far branch sequence using PC-relative auipc + jalr (8 bytes)
-    % When no scratch register is available, use t6 (caller-saved, safe to clobber).
+    % When no scratch register is available, use the backend-selected
+    % caller-saved register.
 
     % Placeholder: auipc TempReg, 0
     % Placeholder: jalr zero, TempReg, 0
@@ -1337,15 +1373,26 @@ call_func_ptr(
     FreeGPMask = FreeMask band ?AVAILABLE_REGS_MASK,
     AvailableRegs1Mask = FreeGPMask bor AvailableRegs0Mask,
 
-    % Calculate stack space: round up to 16-byte boundary for RISC-V ABI
+    % Calculate saved-register and outgoing-argument stack space, each rounded
+    % up to the alignment required by the backend ABI. ILP32E requires 4-byte
+    % alignment, while the other supported RISC-V ABIs require 16 bytes.
     NumRegs = length(SavedRegs),
     StackBytes = NumRegs * ?WORD_SIZE_BYTES,
-    AlignedStackBytes = ((StackBytes + 15) div 16) * 16,
+    AlignedStackBytes =
+        ((StackBytes + ?STACK_ALIGNMENT_BYTES - 1) div ?STACK_ALIGNMENT_BYTES) *
+            ?STACK_ALIGNMENT_BYTES,
+
+    PreparedArgs0 = prepare_call_args(Args),
+    StackArgsCount = max(0, length(PreparedArgs0) - length(?PARAMETER_REGS)),
+    StackArgsBytes = StackArgsCount * ?WORD_SIZE_BYTES,
+    AlignedStackArgsBytes =
+        ((StackArgsBytes + ?STACK_ALIGNMENT_BYTES - 1) div ?STACK_ALIGNMENT_BYTES) *
+            ?STACK_ALIGNMENT_BYTES,
 
     Stream1 = push_registers(SavedRegs, AlignedStackBytes, StreamModule, Stream0),
 
-    % Set up arguments following RISC-V calling convention
-    % Arguments are passed in a0-a7 (up to 8 register arguments)
+    % Set up arguments following the target ABI. ILP32E uses a0-a5; the other
+    % RISC-V ABIs use a0-a7 before spilling words to the outgoing stack.
     Args1 = lists:map(
         fun(Arg) ->
             case Arg of
@@ -1356,19 +1403,29 @@ call_func_ptr(
         Args
     ),
 
-    RegArgs0 = Args1,
+    PreparedArgs = prepare_call_args(Args1),
+    RegArgsCount = min(length(PreparedArgs), length(?PARAMETER_REGS)),
+    {RegArgs0, StackArgs} = lists:split(RegArgsCount, PreparedArgs),
     RegArgsRegs = lists:flatmap(fun arg_to_reg_list/1, RegArgs0),
+    StackArgsRegs = lists:flatmap(fun arg_to_reg_list/1, StackArgs),
     RegArgsRegsMask = regs_to_mask(RegArgsRegs),
+    StackArgsRegsMask = regs_to_mask(StackArgsRegs),
+    ArgsRegsMask = RegArgsRegsMask bor StackArgsRegsMask,
 
     % We pushed registers to stack, so we can use these registers we saved
     % and the currently available registers
-    SetArgsMask = (UsedRegs1Mask band (bnot RegArgsRegsMask)) bor AvailableRegs0Mask,
+    SetArgsPushStackMask = (UsedRegs1Mask band (bnot ArgsRegsMask)) bor AvailableRegs0Mask,
     State1 = State0#state{
         stream = Stream1,
         regs = jit_regs:set_masks(
-            Regs0, SetArgsMask, ?AVAILABLE_REGS_MASK band (bnot SetArgsMask)
+            Regs0,
+            SetArgsPushStackMask,
+            ?AVAILABLE_REGS_MASK band (bnot SetArgsPushStackMask)
         )
     },
+
+    State2 = set_stack_args(State1, StackArgs, AlignedStackArgsBytes, PreparedArgs),
+    SetArgsMask = jit_regs:available_regs(State2#state.regs),
 
     ParameterRegs = parameter_regs(RegArgs0),
     ParamMask = regs_to_mask(ParameterRegs),
@@ -1394,7 +1451,7 @@ call_func_ptr(
                                 RegArgs1 = replace_reg(RegArgs0, FuncPtrReg1, NewArgReg),
                                 {
                                     StreamModule:append(
-                                        State1#state.stream, <<MovInstr1/binary, MovInstr2/binary>>
+                                        State2#state.stream, <<MovInstr1/binary, MovInstr2/binary>>
                                     ),
                                     SetArgsAvailMask1,
                                     FuncPtrReg1,
@@ -1407,7 +1464,7 @@ call_func_ptr(
                                 SetArgsAvailMask1 =
                                     (SetArgsMask band (bnot FuncPtrReg1Bit)) bor FuncPtrReg0Bit,
                                 {
-                                    StreamModule:append(State1#state.stream, MovInstr),
+                                    StreamModule:append(State2#state.stream, MovInstr),
                                     SetArgsAvailMask1,
                                     FuncPtrReg1,
                                     RegArgs0
@@ -1415,27 +1472,27 @@ call_func_ptr(
                         end;
                     false ->
                         SetArgsAvailMask1 = SetArgsMask band (bnot FuncPtrReg0Bit),
-                        {State1#state.stream, SetArgsAvailMask1, FuncPtrReg0, RegArgs0}
+                        {State2#state.stream, SetArgsAvailMask1, FuncPtrReg0, RegArgs0}
                 end;
             {primitive, Primitive} ->
                 FuncPtrReg0 = first_avail(SetArgsMask band (bnot ParamMask)),
                 FuncPtrReg0Bit = reg_bit(FuncPtrReg0),
                 SetArgsAvailMask1 = SetArgsMask band (bnot FuncPtrReg0Bit),
                 PrepCall = load_primitive_ptr(Primitive, FuncPtrReg0),
-                Stream2 = StreamModule:append(State1#state.stream, PrepCall),
+                Stream2 = StreamModule:append(State2#state.stream, PrepCall),
                 {Stream2, SetArgsAvailMask1, FuncPtrReg0, RegArgs0}
         end,
 
-    State3 = State1#state{
+    State3 = State2#state{
         stream = Stream3,
         regs = jit_regs:set_masks(
-            State1#state.regs,
+            State2#state.regs,
             SetArgsAvailMask,
             ?AVAILABLE_REGS_MASK band (bnot SetArgsAvailMask)
         )
     },
 
-    StackOffset = AlignedStackBytes,
+    StackOffset = AlignedStackBytes + AlignedStackArgsBytes,
     State4 = set_registers_args(State3, RegArgs, ParameterRegs, StackOffset),
     Stream4 = State4#state.stream,
 
@@ -1448,12 +1505,13 @@ call_func_ptr(
     % we write the result to the stack position of FuncPtrReg
     {Stream6, UsedRegs2Mask, ResultReg} =
         case {length(SavedRegs), FuncPtrTuple} of
-            {N, {free, ResultFPReg0}} when N >= 7 ->
+            {N, {free, ResultFPReg0}} when N >= ?AVAILABLE_REGS_COUNT ->
                 % Registers exhausted: use FuncPtrReg which is free after the call
                 RegIndex = index_of(ResultFPReg0, SavedRegs),
                 case RegIndex >= 0 of
                     true ->
-                        StoreResultStackOffset = RegIndex * ?WORD_SIZE_BYTES,
+                        StoreResultStackOffset =
+                            AlignedStackArgsBytes + RegIndex * ?WORD_SIZE_BYTES,
                         StoreResult = ?STORE_WORD(sp, a0, StoreResultStackOffset),
                         {
                             StreamModule:append(Stream5, StoreResult),
@@ -1486,7 +1544,8 @@ call_func_ptr(
                 }
         end,
 
-    Stream8 = pop_registers(SavedRegs, AlignedStackBytes, StreamModule, Stream6),
+    Stream7 = pop_stack_args(AlignedStackArgsBytes, StreamModule, Stream6),
+    Stream8 = pop_registers(SavedRegs, AlignedStackBytes, StreamModule, Stream7),
 
     ResultRegBit = reg_bit(ResultReg),
     AvailableRegs3Mask = (AvailableRegs1Mask band (bnot ResultRegBit)) band ?AVAILABLE_REGS_MASK,
@@ -1540,6 +1599,61 @@ pop_registers(SavedRegs, AlignedStackBytes, StreamModule, Stream0) when length(S
     StreamModule:append(Stream1, StackAdjust);
 pop_registers([], _AlignedStackBytes, _StreamModule, Stream0) ->
     Stream0.
+
+set_stack_args(State, [], 0, _AllArgs) ->
+    State;
+set_stack_args(
+    #state{stream_module = StreamModule, stream = Stream0} = State0,
+    StackArgs,
+    AlignedStackArgsBytes,
+    AllArgs
+) ->
+    StackAdjust = ?ASM:addi(sp, sp, -AlignedStackArgsBytes),
+    Stream1 = StreamModule:append(Stream0, StackAdjust),
+    ArgsRegs = args_regs(AllArgs),
+    ParameterTempRegs0 = lists:reverse(?PARAMETER_REGS) -- ArgsRegs,
+    ParameterTempRegs = ParameterTempRegs0 -- [?JITSTATE_REG, ?NATIVE_INTERFACE_REG],
+    TempRegs = mask_to_list(jit_regs:available_regs(State0#state.regs)) ++ ParameterTempRegs,
+    [TempReg | _] = TempRegs,
+    {State1, _} = lists:foldl(
+        fun(Arg, {StateAcc, Offset}) ->
+            {set_stack_arg(StateAcc, Arg, TempReg, Offset), Offset + ?WORD_SIZE_BYTES}
+        end,
+        {State0#state{stream = Stream1}, 0},
+        StackArgs
+    ),
+    State1.
+
+set_stack_arg(
+    #state{stream_module = StreamModule, stream = Stream0} = State0,
+    {free, Reg},
+    _TempReg,
+    Offset
+) when is_atom(Reg) ->
+    Store = ?STORE_WORD(sp, Reg, Offset),
+    free_native_register(State0#state{stream = StreamModule:append(Stream0, Store)}, Reg);
+set_stack_arg(
+    #state{stream_module = StreamModule, stream = Stream0} = State,
+    Reg,
+    _TempReg,
+    Offset
+) when ?IS_GPR(Reg) ->
+    Store = ?STORE_WORD(sp, Reg, Offset),
+    State#state{stream = StreamModule:append(Stream0, Store)};
+set_stack_arg(#state{stream_module = StreamModule} = State0, {free, Arg}, TempReg, Offset) ->
+    State1 = set_registers_args1(State0, Arg, TempReg, 0),
+    Store = ?STORE_WORD(sp, TempReg, Offset),
+    State1#state{stream = StreamModule:append(State1#state.stream, Store)};
+set_stack_arg(#state{stream_module = StreamModule} = State0, Arg, TempReg, Offset) ->
+    State1 = set_registers_args1(State0, Arg, TempReg, 0),
+    Store = ?STORE_WORD(sp, TempReg, Offset),
+    State1#state{stream = StreamModule:append(State1#state.stream, Store)}.
+
+pop_stack_args(0, _StreamModule, Stream0) ->
+    Stream0;
+pop_stack_args(AlignedStackArgsBytes, StreamModule, Stream0) ->
+    StackAdjust = ?ASM:addi(sp, sp, AlignedStackArgsBytes),
+    StreamModule:append(Stream0, StackAdjust).
 
 set_registers_args(State0, Args, StackOffset) ->
     ParamRegs = parameter_regs(Args),
@@ -2401,7 +2515,9 @@ move_to_native_register(
     Regs1 = jit_regs:invalidate_reg(Regs0, RegDst),
     State#state{stream = Stream1, regs = Regs1};
 move_to_native_register(
-    #state{stream_module = StreamModule, stream = Stream0, regs = Regs0} = State, {x_reg, extra}, RegDst
+    #state{stream_module = StreamModule, stream = Stream0, regs = Regs0} = State,
+    {x_reg, extra},
+    RegDst
 ) ->
     {BaseReg, Off} = ?X_REG(?MAX_REG),
     I1 = ?LOAD_WORD(RegDst, BaseReg, Off),
@@ -2430,7 +2546,8 @@ move_to_native_register(
     % ldr_y_reg clobbers first_avail(AT) as a hidden temp for loading Y_REGS pointer
     Regs1 =
         case AT of
-            0 -> jit_regs:set_contents(Regs0, RegDst, {y_reg, Y});
+            0 ->
+                jit_regs:set_contents(Regs0, RegDst, {y_reg, Y});
             _ ->
                 jit_regs:invalidate_reg(
                     jit_regs:set_contents(Regs0, RegDst, {y_reg, Y}), first_avail(AT)
@@ -2601,8 +2718,10 @@ set_continuation_to_offset(
     Code = <<I1/binary, I2/binary>>,
     Stream1 = StreamModule:append(Stream0, Code),
     Regs1 = jit_regs:invalidate_reg(Regs0, Temp),
-    {State#state{stream = Stream1, branches = Branches#{OffsetRef => [BrEntry]}, regs = Regs1},
-        OffsetRef}.
+    {
+        State#state{stream = Stream1, branches = Branches#{OffsetRef => [BrEntry]}, regs = Regs1},
+        OffsetRef
+    }.
 
 %% @doc Implement a continuation entry point.
 continuation_entry_point(State) ->
@@ -3147,8 +3266,7 @@ rewrite_cp_offset(
     PaddedInstr =
         case byte_size(NewMoveInstr) of
             2 ->
-                <<NewMoveInstr/binary, (?ASM:nop())/binary,
-                    (?ASM:c_nop())/binary>>;
+                <<NewMoveInstr/binary, (?ASM:nop())/binary, (?ASM:c_nop())/binary>>;
             4 ->
                 <<NewMoveInstr/binary, (?ASM:nop())/binary>>;
             6 ->
@@ -3288,7 +3406,9 @@ str_y_reg(SrcReg, Y, TempReg1, AvailableMask) when AvailableMask =/= 0 ->
     <<I1/binary, I2/binary, I3/binary, I4/binary>>.
 
 %% Helper function to generate ldr instruction with y_reg offset, handling large offsets
-ldr_y_reg(DstReg, Y, AvailableMask) when AvailableMask =/= 0 andalso Y * ?WORD_SIZE_BYTES =< ?Y_OFFSET_LIMIT ->
+ldr_y_reg(DstReg, Y, AvailableMask) when
+    AvailableMask =/= 0 andalso Y * ?WORD_SIZE_BYTES =< ?Y_OFFSET_LIMIT
+->
     % Small offset - use immediate addressing
     TempReg = first_avail(AvailableMask),
     {BaseReg, Off} = ?Y_REGS,
@@ -3314,10 +3434,10 @@ ldr_y_reg(DstReg, Y, 0) when Y * ?WORD_SIZE_BYTES =< ?Y_OFFSET_LIMIT ->
 
 %% Scratch-register orderings consumed by jit_backend_regs_impl.hrl. They must be
 %% defined before that file is included by jit_riscv32 / jit_riscv64; since this
-%% file is itself included earlier, defining them here suffices. first_avail uses
-%% only the temporaries (t0-t6); mask_to_list additionally covers the argument
-%% registers (a0-a7), which appear in used masks during calls.
--define(FIRST_AVAIL_REGS, [t6, t5, t4, t3, t2, t1, t0]).
+%% file is itself included earlier, defining them here suffices. Argument
+%% registers are a fallback for RV32E tail calls whose smaller temporary pool
+%% can be exhausted by live arguments.
+-define(FIRST_AVAIL_REGS, [t6, t5, t4, t3, t2, t1, t0, a7, a6, a5, a4, a3, a2, a1, a0]).
 -define(MASK_TO_LIST_REGS, [t6, t5, t4, t3, t2, t1, t0, a7, a6, a5, a4, a3, a2, a1, a0]).
 -define(JITSTATE_ARG_REG, jit_state).
 

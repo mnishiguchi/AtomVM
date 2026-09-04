@@ -95,12 +95,17 @@ macro(pack_precompiled_archive avm_name)
             set(pack_precompile_archive_${avm_name}_beams "")
             # Extract base architecture for module dependencies
             string(REGEX REPLACE "\\+.*$" "" jit_target_arch "${jit_target_arch_variant}")
+            if(jit_target_arch STREQUAL "riscv32e")
+                set(jit_target_asm_arch "riscv32")
+            else()
+                set(jit_target_asm_arch "${jit_target_arch}")
+            endif()
             set(jit_compiler_modules
                 ${CMAKE_BINARY_DIR}/libs/jit/src/beams/jit.beam
                 ${CMAKE_BINARY_DIR}/libs/jit/src/beams/jit_precompile.beam
                 ${CMAKE_BINARY_DIR}/libs/jit/src/beams/jit_stream_binary.beam
                 ${CMAKE_BINARY_DIR}/libs/jit/src/beams/jit_${jit_target_arch}.beam
-                ${CMAKE_BINARY_DIR}/libs/jit/src/beams/jit_${jit_target_arch}_asm.beam
+                ${CMAKE_BINARY_DIR}/libs/jit/src/beams/jit_${jit_target_asm_arch}_asm.beam
             )
             if (NOT AVM_DISABLE_JIT_DWARF)
                 list(APPEND jit_compiler_modules

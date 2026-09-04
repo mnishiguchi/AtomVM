@@ -18,7 +18,11 @@
 % SPDX-License-Identifier: Apache-2.0 OR LGPL-2.1-or-later
 %
 
+-ifdef(JIT_RISCV32E).
+-module(jit_riscv32e).
+-else.
 -module(jit_riscv32).
+-endif.
 
 -export([
     word_size/0,
@@ -239,7 +243,17 @@
 %% - a2: native interface pointer (reserved)
 %% - t0-t6: temporaries, caller-saved, available for JIT use
 %% - s0-s11: callee-saved (would need to be saved/restored)
+-ifdef(JIT_RISCV32E).
+-define(PARAMETER_REGS, [a0, a1, a2, a3, a4, a5]).
+-define(FAR_BRANCH_REG, t2).
+-define(AVAILABLE_REGS_COUNT, 3).
+-define(STACK_ALIGNMENT_BYTES, 4).
+-else.
 -define(PARAMETER_REGS, [a0, a1, a2, a3, a4, a5, a6, a7]).
+-define(FAR_BRANCH_REG, t6).
+-define(AVAILABLE_REGS_COUNT, 7).
+-define(STACK_ALIGNMENT_BYTES, 16).
+-endif.
 
 -define(REG_BIT_A0, (1 bsl 0)).
 -define(REG_BIT_A1, (1 bsl 1)).
@@ -258,10 +272,14 @@
 -define(REG_BIT_T6, (1 bsl 14)).
 
 %% AVAILABLE_REGS = [t6, t5, t4, t3, t2, t1, t0]
+-ifdef(JIT_RISCV32E).
+-define(AVAILABLE_REGS_MASK, (?REG_BIT_T2 bor ?REG_BIT_T1 bor ?REG_BIT_T0)).
+-else.
 -define(AVAILABLE_REGS_MASK,
     (?REG_BIT_T6 bor ?REG_BIT_T5 bor ?REG_BIT_T4 bor ?REG_BIT_T3 bor
         ?REG_BIT_T2 bor ?REG_BIT_T1 bor ?REG_BIT_T0)
 ).
+-endif.
 
 -include("jit_backend_dwarf_impl.hrl").
 -define(ASM, jit_riscv32_asm).
@@ -290,6 +308,22 @@
 
 -spec word_size() -> 4 | 8.
 word_size() -> 4.
+
+-ifdef(JIT_RISCV32E).
+prepare_call_args(Args) ->
+    lists:flatmap(
+        fun
+            ({avm_int64_t, Value}) when is_integer(Value) ->
+                [Value band 16#FFFFFFFF, (Value bsr 32) band 16#FFFFFFFF];
+            (Arg) ->
+                [Arg]
+        end,
+        Args
+    ).
+-else.
+prepare_call_args(Args) ->
+    Args.
+-endif.
 
 div_(
     #state{stream_module = StreamModule, stream = Stream0, regs = Regs0} = State,

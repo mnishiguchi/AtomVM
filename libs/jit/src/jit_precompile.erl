@@ -128,7 +128,12 @@ compile(Target, Dir, Dwarf, Path) ->
             end,
 
         % Parse target to extract arch and variant
-        {BaseTarget, RequestedVariant} = parse_target(Target),
+        {BaseTarget, RequestedVariant0} = parse_target(Target),
+        RequestedVariant =
+            case BaseTarget of
+                "riscv32e" -> RequestedVariant0 bor ?JIT_VARIANT_RV32E;
+                _ -> RequestedVariant0
+            end,
         Backend = list_to_atom("jit_" ++ BaseTarget),
 
         Arch =
@@ -137,6 +142,7 @@ compile(Target, Dir, Dwarf, Path) ->
                 "aarch64" -> ?JIT_ARCH_AARCH64;
                 "armv6m" -> ?JIT_ARCH_ARMV6M;
                 "riscv32" -> ?JIT_ARCH_RISCV32;
+                "riscv32e" -> ?JIT_ARCH_RISCV32;
                 "riscv64" -> ?JIT_ARCH_RISCV64;
                 "arm32" -> ?JIT_ARCH_ARM32;
                 "wasm32" -> ?JIT_ARCH_WASM32;
@@ -196,7 +202,18 @@ compile(Target, Dir, Dwarf, Path) ->
                     [{"avmN", Backend:stream(Stream3)}]
             end,
 
-        UpdatedChunks = FilteredChunks ++ NewChunks,
+        TargetChunks =
+            case {BaseTarget, LiteralsChunk} of
+                {"riscv32e", <<>>} ->
+                    lists:keydelete("LitU", 1, lists:keydelete("LitT", 1, FilteredChunks));
+                {"riscv32e", _} ->
+                    ChunksWithoutLiterals =
+                        lists:keydelete("LitU", 1, lists:keydelete("LitT", 1, FilteredChunks)),
+                    ChunksWithoutLiterals ++ [{"LitU", LiteralsChunk}];
+                _ ->
+                    FilteredChunks
+            end,
+        UpdatedChunks = TargetChunks ++ NewChunks,
         {ok, Binary} = beam_lib:build_module(UpdatedChunks),
         Basename = filename:basename(Path),
         UpdatedFile = filename:join(Dir, Basename),

@@ -39,6 +39,7 @@ start() ->
         jit_armv7m_tests,
         jit_armv7m_asm_tests,
         jit_riscv32_tests,
+        jit_riscv32e_tests,
         jit_riscv32_asm_tests,
         jit_riscv64_tests,
         jit_riscv64_asm_tests,

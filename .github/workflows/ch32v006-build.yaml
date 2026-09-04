@@ -77,6 +77,7 @@ jobs:
           CH32FUN_ROOT: ${{ runner.temp }}/ch32fun
         run: |
           make CH32FUN="$CH32FUN_ROOT/ch32fun" clean
+          make CH32FUN="$CH32FUN_ROOT/ch32fun" validation-tests
           make CH32FUN="$CH32FUN_ROOT/ch32fun" acceptance-images
           make CH32FUN="$CH32FUN_ROOT/ch32fun" \
             ATOMVM_VERSION="$AVM_IMAGE_VERSION" release-image

@@ -131,6 +131,6 @@ Open the terminal before resetting or reflashing if you want the boot banner.
 The onboard programmer exposes HID/SWIO rather than `/dev/ttyACM*`, so `tio`
 cannot monitor this console; the command above runs `minichlink -T`.
 
-PC3 is LED pin `35`. Do not use PC0 (`32`), which controls programmer reset,
-or PD1 (`49`) while using SWIO. See the [platform README](README.md) for the
-supported runtime and GPIO boundary.
+PC3 is LED pin `35`. PC0 (`32`) and the PD1/SWIO pin (`49`) are rejected by
+default. See the [platform README](../README.md) for the exact runtime and GPIO
+boundary.

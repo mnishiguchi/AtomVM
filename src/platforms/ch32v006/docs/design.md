@@ -24,8 +24,9 @@ The onboard programmer enumerates as USB HID `1209:b806` and is used through
 ch32fun's minichlink support.
 
 PC0 is rejected by every GPIO NIF because reconfiguring it can interfere with
-the onboard programmer. PD1 is reserved for SWIO while a debug session is
-active.
+the onboard programmer. PD1 is the only SWIO path and is rejected by default;
+`ALLOW_SWIO_PIN=1` is an explicit opt-in that can disconnect programming and
+the console.
 
 ## Why AOT is required
 
@@ -35,7 +36,7 @@ startup code and an application were included.
 
 The port therefore uses a native-only runtime:
 
-- applications are precompiled with the `riscv32e` AOT target;
+- applications are precompiled with the `riscv32e+minimal` AOT target;
 - the platform is built without the BEAM interpreter;
 - one precompiled startup module is embedded directly in firmware; and
 - only the native-interface functionality required by the advertised support
@@ -65,6 +66,15 @@ with more than six ABI words, including 64-bit arguments. This validates the
 generated calling convention against the compiler used for the physical
 CH32V006 firmware.
 
+The `minimal` native-code variant records the reduced native-interface ABI in
+the image header. A regular RV32E image is therefore incompatible with this
+runtime instead of being allowed to call absent helpers.
+
+The current RV32E target is `rv32ec_zmmul`, so the backend does not advertise
+hardware `div` or `rem` generation. The generic JIT therefore falls back to the
+linked BIF implementations, while native-code validation rejects any accidental
+hardware divide or remainder instruction.
+
 ## Constrained runtime boundary
 
 The current support tier is deliberately narrow. It includes:
@@ -72,7 +82,8 @@ The current support tier is deliberately narrow. It includes:
 - one embedded startup module and one scheduled process;
 - local calls and tail recursion;
 - allocation and garbage collection;
-- atoms, small integers, lists, tuples, and literals;
+- atoms, 28-bit signed integers, lists, tuples, and opaque binary literals
+  (needed by Elixir's generated `__info__/1` metadata);
 - comparisons and pattern matching;
 - `try/catch` and the required exception-unwind paths;
 - `+`, `-`, `*`, `div`, `rem`, and `length`; and
@@ -85,6 +96,10 @@ The target does not provide:
 
 - the BEAM interpreter;
 - the complete AtomVM BIF/NIF or instruction surface;
+- processes, messages, funs, floats, binary construction and matching, maps,
+  large-integer literals, and dynamic apply;
+- qualified behavior for arithmetic results outside the 28-bit small-integer
+  range;
 - dynamic module loading;
 - AVM archive loading;
 - ports; or
@@ -156,10 +171,14 @@ instead of extending this helper.
 The port is qualified at several layers:
 
 - focused RV32E backend tests;
+- negative AOT tests for every excluded BEAM value/execution family;
+- decoding of generated machine code to reject x16-x31, hardware `div`/`rem`,
+  floating-point, and other instructions outside `rv32ec_zmmul`;
 - regression tests for the regular RV32 and RV64 backends;
 - generated ILP32E ABI canary code;
 - flash-size and ELF ABI checks;
 - a language/runtime acceptance image;
+- a reduced-heap language image and a controlled initial-process OOM image;
 - a GPIO acceptance image;
 - a normal blink image;
 - generic Unix build checks; and
@@ -173,6 +192,13 @@ behavior, GPIO electrical behavior, and sustained execution. Changes to the
 RV32E ABI path, stack reservation, allocator, native-interface layout, or
 upstream precompiler/runtime interfaces require renewed hardware
 qualification.
+
+## Peripheral qualification
+
+Hello World, GPIO output, and polled GPIO input are qualified today. GPIO
+interrupts, timers, PWM, ADC, UART, I2C, SPI, and a combined application remain
+future work. Each capability should be selected explicitly at compile time so
+unused drivers do not consume the fixed flash and SRAM budgets.
 
 ## Design boundary
 

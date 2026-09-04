@@ -46,7 +46,8 @@ The startup module must export `start/0`. CH32V006 has no separate AtomVM and
 application partitions: every BIN contains the runtime and one application,
 so changing the application rebuilds and reflashes the complete firmware.
 
-Build the normal, language, and GPIO acceptance images with:
+Build the normal, language, reduced-heap, controlled-OOM, and GPIO acceptance
+images with:
 
 ```sh
 make CH32FUN=/path/to/ch32fun/ch32fun acceptance-images
@@ -93,20 +94,30 @@ Supported calls are:
 `ch32v006:delay_ms/1` blocks the entire one-thread runtime. It is suitable for
 bring-up examples, but it is not equivalent to `Process.sleep/1`.
 
-Never use PC0 (`32`): it controls programmer reset and is rejected by every
-GPIO NIF. PD1 (`49`) is SWIO; reconfiguring it can disconnect debugging.
+PC0 (`32`) controls programmer reset and is always rejected. PD1 (`49`) is the
+only SWIO programming/debug pin and is also rejected by default. An application
+that knowingly gives up programming and console access may opt in at build time
+with `ALLOW_SWIO_PIN=1`.
 
 ## Supported runtime tier
 
-The tested tier supports one embedded module/process, local calls, tail
-recursion, allocation and GC, atoms, small integers, lists, tuples, literals,
-comparisons, pattern matching, `try/catch`, direct platform NIFs, and the `+`,
-`-`, `*`, `div`, `rem`, and `length` BIFs. Unresolved calls raise `undef`, and
-invalid GPIO arguments raise catchable `badarg` errors.
+The tested tier supports one embedded module and startup process, local calls,
+tail recursion, allocation and GC, atoms, 28-bit signed integers, lists,
+tuples, comparisons, pattern matching, `try/catch`, direct platform NIFs, and
+the `+`, `-`, `*`, `div`, `rem`, and `length` BIFs. Opaque binary literals are
+also loadable because Elixir stores module metadata in one. Unresolved external
+calls raise `undef`, and invalid GPIO arguments raise catchable `badarg` errors.
 
-It does not include the interpreter, dynamic module or AVM archive loading,
-ports, SMP, or the complete AtomVM instruction/BIF/NIF surface. New operations
-must be explicitly linked and validated against the flash and SRAM budgets.
+Processes, send/receive, funs, floats, binary construction or matching, maps,
+large integers, dynamic apply, the interpreter, dynamic module or AVM archive
+loading, ports, and SMP are not supported. Missing native helpers, BIFs, and
+unsupported literal types are rejected during AOT generation. Each generated
+image is also decoded to reject x16-x31, hardware divide/remainder,
+floating-point, and other instructions outside `rv32ec_zmmul`.
+
+Only polled GPIO and the blocking delay are currently implemented as platform
+peripherals. GPIO interrupts, timers, PWM, ADC, UART, I2C, and SPI remain a
+qualification roadmap; they are not implied by the platform build.
 
 The allocator reserves 1,432 bytes for the C stack, protects that boundary
 with a production canary, and accepts an experimental override:
@@ -118,3 +129,9 @@ make CH32FUN=/path/to/ch32fun/ch32fun \
 
 Increasing the reserve reduces allocator space by the same amount. Use the
 acceptance images on real hardware before adopting a different value.
+
+Run host-side boundary and instruction checks with:
+
+```sh
+make CH32FUN=/path/to/ch32fun/ch32fun validation-tests
+```

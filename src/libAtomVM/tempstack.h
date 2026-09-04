@@ -36,20 +36,22 @@ typedef enum
     TempStackFailedAlloc = 1
 } TempStackResult;
 
-#define MIN_STACK_SIZE 8
+#ifndef AVM_TEMP_STACK_SIZE
+#define AVM_TEMP_STACK_SIZE 8
+#endif
 
 struct TempStack
 {
     term *stack_start;
     term *stack_pos;
     term *stack_end;
-    term min_stack[MIN_STACK_SIZE];
+    term min_stack[AVM_TEMP_STACK_SIZE];
 };
 
 NO_DISCARD static inline TempStackResult temp_stack_init(struct TempStack *temp_stack)
 {
     temp_stack->stack_start = temp_stack->min_stack;
-    temp_stack->stack_end = temp_stack->stack_start + MIN_STACK_SIZE;
+    temp_stack->stack_end = temp_stack->stack_start + AVM_TEMP_STACK_SIZE;
     temp_stack->stack_pos = temp_stack->stack_end;
 
     return TempStackOk;
@@ -87,7 +89,7 @@ NO_DISCARD static TempStackResult temp_stack_grow(struct TempStack *temp_stack)
 
 static inline bool temp_stack_is_empty(const struct TempStack *temp_stack)
 {
-    return temp_stack->stack_pos == temp_stack->min_stack + MIN_STACK_SIZE;
+    return temp_stack->stack_pos == temp_stack->min_stack + AVM_TEMP_STACK_SIZE;
 }
 
 NO_DISCARD static inline TempStackResult temp_stack_push(struct TempStack *temp_stack, term value)
@@ -113,7 +115,7 @@ static inline term temp_stack_pop(struct TempStack *temp_stack)
     term value = *temp_stack->stack_pos;
     temp_stack->stack_pos++;
 
-    if (temp_stack->stack_pos == temp_stack->stack_end && temp_stack->stack_end != temp_stack->min_stack + MIN_STACK_SIZE) {
+    if (temp_stack->stack_pos == temp_stack->stack_end && temp_stack->stack_end != temp_stack->min_stack + AVM_TEMP_STACK_SIZE) {
         // Transition to C-stack based buffer
         temp_stack->stack_pos = temp_stack->min_stack;
     }

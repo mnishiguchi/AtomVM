@@ -269,6 +269,7 @@ enum TrapAndLoadResult
 #define JIT_VARIANT_PIC 1
 #define JIT_VARIANT_FLOAT32 2
 #define JIT_VARIANT_THUMB2 4
+#define JIT_VARIANT_RV32E 4
 
 #ifdef JIT_JUMPTABLE_IS_DATA
 /**

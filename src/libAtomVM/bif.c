@@ -22,6 +22,7 @@
 
 #include <math.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "atom.h"
 #include "bitstring.h"
@@ -37,11 +38,13 @@
 #include "unicode.h"
 #include "utils.h"
 
+#ifndef AVM_MINIMAL_BIFS
 // Ignore warning caused by gperf generated code
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wmissing-field-initializers"
 #include "bifs_hash.h"
 #pragma GCC diagnostic pop
+#endif
 
 #define RAISE_ERROR(error_type_atom)                  \
     do {                                              \
@@ -86,12 +89,34 @@ static void conv_term_to_bigint(term t, intn_digit_t *tmp_buf, const intn_digit_
 
 const struct ExportedFunction *bif_registry_get_handler(const char *mfa)
 {
+#ifdef AVM_MINIMAL_BIFS
+    static const struct
+    {
+        const char *mfa;
+        struct GCBif bif;
+    } minimal_bifs[] = {
+        { "erlang:+/2", { .base.type = GCBIFFunctionType, .gcbif2_ptr = bif_erlang_add_2 } },
+        { "erlang:-/2", { .base.type = GCBIFFunctionType, .gcbif2_ptr = bif_erlang_sub_2 } },
+        { "erlang:*/2", { .base.type = GCBIFFunctionType, .gcbif2_ptr = bif_erlang_mul_2 } },
+        { "erlang:div/2", { .base.type = GCBIFFunctionType, .gcbif2_ptr = bif_erlang_div_2 } },
+        { "erlang:rem/2", { .base.type = GCBIFFunctionType, .gcbif2_ptr = bif_erlang_rem_2 } },
+        { "erlang:length/1", { .base.type = GCBIFFunctionType, .gcbif1_ptr = bif_erlang_length_1 } }
+    };
+
+    for (size_t i = 0; i < sizeof(minimal_bifs) / sizeof(minimal_bifs[0]); ++i) {
+        if (strcmp(mfa, minimal_bifs[i].mfa) == 0) {
+            return &minimal_bifs[i].bif.base;
+        }
+    }
+    return NULL;
+#else
     const BifNameAndPtr *nameAndPtr = in_word_set(mfa, strlen(mfa));
     if (!nameAndPtr) {
         return NULL;
     }
 
     return &nameAndPtr->bif.base;
+#endif
 }
 
 term bif_erlang_self_0(Context *ctx)

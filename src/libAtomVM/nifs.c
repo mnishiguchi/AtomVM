@@ -6971,7 +6971,11 @@ static term nif_jit_backend_module(Context *ctx, int argc, term argv[])
 #elif JIT_ARCH_TARGET == JIT_ARCH_ARMV6M
     return JIT_ARMV6M_ATOM;
 #elif JIT_ARCH_TARGET == JIT_ARCH_RISCV32
+#ifdef __riscv_abi_rve
+    return JIT_RISCV32E_ATOM;
+#else
     return JIT_RISCV32_ATOM;
+#endif
 #elif JIT_ARCH_TARGET == JIT_ARCH_RISCV64
     return JIT_RISCV64_ATOM;
 #elif JIT_ARCH_TARGET == JIT_ARCH_ARM32
@@ -6997,6 +7001,9 @@ static term nif_jit_variant(Context *ctx, int argc, term argv[])
 #endif
 #ifdef AVM_JIT_THUMB2
     variant |= JIT_VARIANT_THUMB2;
+#endif
+#ifdef __riscv_abi_rve
+    variant |= JIT_VARIANT_RV32E;
 #endif
     return term_from_int(variant);
 }

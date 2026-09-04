@@ -67,6 +67,9 @@ GlobalContext *globalcontext_new(void)
     if (IS_NULL_PTR(glb)) {
         return NULL;
     }
+#ifdef AVM_MINIMAL_RUNTIME
+    memset(glb, 0, sizeof(GlobalContext));
+#endif
     list_init(&glb->ready_processes);
     list_init(&glb->running_processes);
     list_init(&glb->waiting_processes);
@@ -85,7 +88,9 @@ GlobalContext *globalcontext_new(void)
     synclist_init(&glb->resource_types);
     synclist_init(&glb->select_events);
 
+#ifndef AVM_MINIMAL_RUNTIME
     ets_init(&glb->ets);
+#endif
 
     glb->last_process_id = 0;
 
@@ -129,6 +134,7 @@ GlobalContext *globalcontext_new(void)
     glb->creation = 0;
     synclist_init(&glb->dist_connections);
 
+#ifndef AVM_MINIMAL_RUNTIME
     ErlNifEnv env;
     erl_nif_env_partial_init_from_globalcontext(&env, glb);
     glb->resource_binary_resource_type = enif_init_resource_type(&env, "resource_binary", &resource_binary_resource_type_init, ERL_NIF_RT_CREATE, NULL);
@@ -204,6 +210,7 @@ GlobalContext *globalcontext_new(void)
         free(glb);
         return NULL;
     }
+#endif
 #endif
 
     sys_init_platform(glb);
@@ -788,7 +795,11 @@ run_result_t globalcontext_run(GlobalContext *glb, Module *startup_module, FILE 
 {
     Context *ctx = context_new(glb);
     ctx->leader = 1;
+#ifdef AVM_MINIMAL_RUNTIME
+    Module *init_module = NULL;
+#else
     Module *init_module = globalcontext_get_module(glb, INIT_ATOM_INDEX);
+#endif
     if (IS_NULL_PTR(init_module)) {
         if (IS_NULL_PTR(startup_module)) {
             fprintf(stderr, "Unable to locate entrypoint.\n");

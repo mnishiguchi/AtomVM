@@ -483,6 +483,30 @@ static Context *jit_call_ext(Context *ctx, JITState *jit_state, int offset, int 
 {
     TRACE("jit_call_ext: arity=%d index=%d n_words=%d\n", arity, index, n_words);
     const struct ExportedFunction *func = module_resolve_function(jit_state->module, index, ctx->global);
+#ifdef AVM_MINIMAL_RUNTIME
+    if (IS_NULL_PTR(func) || func->type != NIFFunctionType) {
+        return jit_raise_error(ctx, jit_state, offset, UNDEF_ATOM);
+    }
+
+    const struct Nif *nif = EXPORTED_FUNCTION_TO_NIF(func);
+    term return_value = nif->nif_ptr(ctx, arity, ctx->x);
+    if (term_is_invalid_term(return_value)) {
+        if (ctx->x[0] != ERROR_ATOM && ctx->x[0] != LOWERCASE_EXIT_ATOM && ctx->x[0] != THROW_ATOM) {
+            set_error(ctx, jit_state, offset, BADARG_ATOM);
+        }
+        return jit_handle_error(ctx, jit_state, offset);
+    }
+    ctx->x[0] = return_value;
+
+    if (n_words >= 0) {
+        ctx->cp = ctx->e[n_words];
+        ctx->e += (n_words + 1);
+    }
+    if ((long) ctx->cp == -1) {
+        return NULL;
+    }
+    return jit_return(ctx, jit_state);
+#else
     if (IS_NULL_PTR(func)) {
         return jit_raise_error(ctx, jit_state, 0, UNDEF_ATOM);
     }
@@ -642,6 +666,7 @@ static Context *jit_call_ext(Context *ctx, JITState *jit_state, int offset, int 
         }
     }
     return ctx;
+#endif
 }
 
 static term jit_module_get_atom_term_by_id(JITState *jit_state, int atom_index)
@@ -2012,6 +2037,30 @@ static term jit_stacktrace_build(Context *ctx)
     return stacktrace_build(ctx, ctx->x, 1);
 }
 
+#ifdef AVM_NATIVE_INTERFACE_MINIMAL
+const ModuleNativeInterface module_native_interface = {
+    .raise_error = jit_raise_error,
+    .do_return = jit_return,
+    .schedule_next_cp = jit_schedule_next_cp,
+    .module_get_atom_term_by_id = jit_module_get_atom_term_by_id,
+    .call_ext = jit_call_ext,
+    .allocate = jit_allocate,
+    .handle_error = jit_handle_error,
+    .jit_trim_live_regs = jit_trim_live_regs,
+    .get_imported_bif = jit_get_imported_bif,
+    .deallocate = jit_deallocate,
+    .terminate_context = jit_terminate_context,
+    .term_compare = jit_term_compare,
+    .test_heap = jit_test_heap,
+    .put_list = jit_put_list,
+    .module_load_literal = jit_module_load_literal,
+    .term_alloc_tuple = jit_term_alloc_tuple,
+    .catch_end = jit_catch_end,
+    .raw_raise = jit_raw_raise,
+    .raise_error_mfa = jit_raise_error_mfa,
+    .try_case = jit_try_case
+};
+#else
 const ModuleNativeInterface module_native_interface = {
     jit_raise_error,
     jit_return,
@@ -2092,6 +2141,7 @@ const ModuleNativeInterface module_native_interface = {
     jit_raise_error_mfa,
     jit_try_case
 };
+#endif
 
 #endif
 

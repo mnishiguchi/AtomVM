@@ -152,6 +152,15 @@ void context_destroy(Context *ctx)
     list_remove(&ctx->processes_list_head);
     SMP_SPINLOCK_UNLOCK(&ctx->global->processes_spinlock);
 
+#ifdef AVM_MINIMAL_RUNTIME
+    struct ListHead *processes_table_list = synclist_wrlock(&ctx->global->processes_table);
+    UNUSED(processes_table_list);
+    list_remove(&ctx->processes_table_head);
+    synclist_unlock(&ctx->global->processes_table);
+
+    memory_destroy_heap(&ctx->heap, ctx->global);
+    free(ctx);
+#else
     // Another process can get an access to our mailbox until this point.
     struct ListHead *processes_table_list = synclist_wrlock(&ctx->global->processes_table);
     UNUSED(processes_table_list);
@@ -309,6 +318,7 @@ void context_destroy(Context *ctx)
     ets_delete_owned_tables(&ctx->global->ets, ctx->process_id, ctx->global);
 
     free(ctx);
+#endif
 }
 
 static inline term term_pid_or_port_from_context(const Context *ctx)

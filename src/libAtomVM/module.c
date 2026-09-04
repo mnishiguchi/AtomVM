@@ -33,6 +33,7 @@
 #include "jit.h"
 #include "list.h"
 #include "nifs.h"
+#include "platform_nifs.h"
 #include "smp.h"
 #include "sys.h"
 #include "term.h"
@@ -877,6 +878,12 @@ static int parse_core_chunk(Module *mod, struct ListHead *line_refs)
 
 #endif /* AVM_NO_EMU */
 
+#ifdef AVM_MINIMAL_RUNTIME
+static const struct ExportedFunction minimal_unresolved_function = {
+    .type = UnresolvedFunctionCall
+};
+#endif
+
 static enum ModuleLoadResult module_populate_atoms_table(Module *this_module, uint8_t *table_data, GlobalContext *glb)
 {
     int atoms_count = READ_32_UNALIGNED(table_data + 8);
@@ -933,6 +940,7 @@ static enum ModuleLoadResult module_build_imported_functions_table(Module *this_
         char mfa[MAX_MFA_NAME_LEN];
         atom_table_write_mfa(glb->atom_table, mfa, sizeof(mfa), module_atom, function_atom, arity);
 
+#ifndef AVM_MINIMAL_RUNTIME
         const struct ExportedFunction *bif = bif_registry_get_handler(mfa);
 
         if (bif) {
@@ -940,8 +948,25 @@ static enum ModuleLoadResult module_build_imported_functions_table(Module *this_
         } else {
             this_module->imported_funcs[i] = &nifs_get(mfa)->base;
         }
+#else
+#ifdef AVM_MINIMAL_BIFS
+        const struct ExportedFunction *bif = bif_registry_get_handler(mfa);
+        if (bif) {
+            this_module->imported_funcs[i] = bif;
+        }
+#endif
+        const struct Nif *nif = platform_nifs_get_nif(mfa);
+        if (!this_module->imported_funcs[i] && nif) {
+            this_module->imported_funcs[i] = &nif->base;
+        }
+#endif
 
         if (!this_module->imported_funcs[i]) {
+#ifdef AVM_MINIMAL_RUNTIME
+            // Dynamic module loading is unavailable, so metadata for a later
+            // resolution attempt would only consume and fragment the tiny heap.
+            this_module->imported_funcs[i] = &minimal_unresolved_function;
+#else
             struct UnresolvedFunctionCall *unresolved = malloc(sizeof(struct UnresolvedFunctionCall));
             if (IS_NULL_PTR(unresolved)) {
                 fprintf(stderr, "Cannot allocate memory while loading module (line: %i).\n", __LINE__);
@@ -953,6 +978,7 @@ static enum ModuleLoadResult module_build_imported_functions_table(Module *this_
             unresolved->arity = arity;
 
             this_module->imported_funcs[i] = &unresolved->base;
+#endif
         }
     }
 
@@ -1163,6 +1189,9 @@ Module *module_new_from_iff_binary(GlobalContext *global, const void *iff_binary
 #endif
 #ifdef AVM_JIT_THUMB2
                 runtime_variant |= JIT_VARIANT_THUMB2;
+#endif
+#ifdef __riscv_abi_rve
+                runtime_variant |= JIT_VARIANT_RV32E;
 #endif
                 if (ENDIAN_SWAP_16(native_code->architectures[arch_index].architecture) == JIT_ARCH_TARGET && ENDIAN_SWAP_16(native_code->architectures[arch_index].variant) == runtime_variant) {
                     size_t arch_offset = ENDIAN_SWAP_32(native_code->architectures[arch_index].offset);
@@ -1635,6 +1664,7 @@ ModuleNativeEntryPoint module_get_native_entry_point(Module *module, int exporte
 }
 #endif
 
+#ifndef AVM_MINIMAL_RUNTIME
 static const struct ExportedFunction *module_create_function(Module *found_module, int exported_label)
 {
 #ifndef AVM_NO_JIT
@@ -1673,9 +1703,19 @@ static const struct ExportedFunction *module_create_function(Module *found_modul
     }
 #endif
 }
+#endif
 
 const struct ExportedFunction *module_resolve_function0(Module *mod, int import_table_index, struct UnresolvedFunctionCall *unresolved, GlobalContext *glb)
 {
+#ifdef AVM_MINIMAL_RUNTIME
+    // The constrained runtime cannot load modules dynamically. Leave the import
+    // unresolved so the caller can raise undef without entering the file loader.
+    UNUSED(mod);
+    UNUSED(import_table_index);
+    UNUSED(unresolved);
+    UNUSED(glb);
+    return NULL;
+#else
     Module *found_module = globalcontext_get_module(glb, unresolved->module_atom_index);
 
     if (LIKELY(found_module != NULL)) {
@@ -1699,6 +1739,7 @@ const struct ExportedFunction *module_resolve_function0(Module *mod, int import_
         fprintf(stderr, "Warning: module %.*s cannot be resolved.\n", (int) atom_string_len, atom_string_data);
         return NULL;
     }
+#endif
 }
 
 static bool module_check_line_refs(Module *mod, const uint8_t **data, size_t len)

@@ -79,8 +79,9 @@ assert_all_native_free(#state{regs = Regs}) ->
     ok.
 
 %% Return the first allocatable scratch register set in `Mask', following the
-%% backend's allocation-priority order. Crashes if `Mask' has no allocatable
-%% register set; callers check availability beforehand.
+%% backend's allocation-priority order. Raises a descriptive AOT error if no
+%% register is available.
+first_avail(0) -> error({native_registers_exhausted, ?MODULE});
 first_avail(Mask) -> jit_regs:first_set(Mask, ?FIRST_AVAIL_REGS, fun reg_bit/1).
 
 %% Return the registers set in `Mask' in the backend's canonical order. The

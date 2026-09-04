@@ -8,5 +8,9 @@
 -export([start/0]).
 
 start() ->
-    _Value = adc:read(0),
-    ch32v006:report(passed).
+    Result =
+        case adc:read(0) of
+            Value when Value >= 0, Value =< 1023 -> passed;
+            _ -> failed
+        end,
+    ch32v006:report(Result).

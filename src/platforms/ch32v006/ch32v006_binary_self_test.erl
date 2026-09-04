@@ -10,15 +10,14 @@
 start() ->
     A = 16#12,
     B = 16#34,
-    Binary = <<A:8, B:8, 16#56>>,
+    Binary = make_binary(A, B),
     Result =
         case Binary of
-            <<16#12, 16#34, Rest/binary>> ->
-                verify(Rest, byte_size(Rest), bit_size(Rest));
+            <<16#12, 16#34, 16#56>> ->
+                passed;
             _ ->
                 failed
         end,
     ch32v006:report(Result).
 
-verify(<<16#56>>, 1, 8) -> passed;
-verify(_, _, _) -> failed.
+make_binary(A, B) -> <<A:8, B:8, 16#56>>.

@@ -13,7 +13,11 @@
 
 #include <ch32fun.h>
 
+#include "ch32v006_pins.h"
 #include "ch32v006_time.h"
+#ifdef AVM_CH32V006_PERIPHERALS
+#include "ch32v006_peripherals.h"
+#endif
 
 #include <defaultatoms.h>
 #include <interop.h>
@@ -71,31 +75,13 @@ static const AtomStringIntPair pin_level_table[] = {
     SELECT_INT_DEFAULT(-1)
 };
 
-static bool pin_is_safe(int32_t pin)
-{
-    // PC0 drives the onboard programmer's reset input on UIAPduino V1.1.
-    if (pin == PC0) {
-        return false;
-    }
-#ifndef AVM_CH32V006_ALLOW_SWIO_PIN
-    // PD1 is the only programming/debug interface and is reserved by default.
-    if (pin == PD1) {
-        return false;
-    }
-#endif
-
-    int32_t port = pin >> 4;
-    int32_t index = pin & 0xF;
-    return index >= 0 && ((port == 0 && index <= 7) || (port == 1 && index <= 6) || (port == 2 && index <= 7) || (port == 3 && index <= 7));
-}
-
 static bool get_pin(term pin_term, int32_t *pin)
 {
     if (!term_is_integer(pin_term)) {
         return false;
     }
     *pin = term_to_int32(pin_term);
-    return pin_is_safe(*pin);
+    return ch32v006_pin_is_safe(*pin);
 }
 
 static term nif_atomvm_platform(Context *ctx, int argc, term argv[])
@@ -277,7 +263,12 @@ static term nif_spawn(Context *ctx, int argc, term argv[])
     size_t heap_need = 0;
     term args = argv[2];
     while (term_is_nonempty_list(args)) {
-        heap_need += memory_estimate_usage(term_get_list_head(args));
+        size_t arg_need = memory_estimate_usage(term_get_list_head(args));
+        if (arg_need > SIZE_MAX - heap_need) {
+            context_destroy(new_ctx);
+            return concurrency_error(ctx, OUT_OF_MEMORY_ATOM);
+        }
+        heap_need += arg_need;
         args = term_get_list_tail(args);
     }
     if (memory_ensure_free_opt(new_ctx, heap_need, MEMORY_CAN_SHRINK) != MEMORY_GC_OK) {
@@ -388,6 +379,12 @@ const struct Nif *platform_nifs_get_nif(const char *nifname)
 #ifdef AVM_CH32V006_SELF_TEST
     if (strcmp("ch32v006:report/1", nifname) == 0) {
         return &report_nif;
+    }
+#endif
+#ifdef AVM_CH32V006_PERIPHERALS
+    const struct Nif *peripheral_nif = ch32v006_peripherals_get_nif(nifname);
+    if (peripheral_nif) {
+        return peripheral_nif;
     }
 #endif
     return NULL;

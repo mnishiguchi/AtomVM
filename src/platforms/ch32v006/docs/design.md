@@ -162,9 +162,8 @@ interrupt maintains a software extension independently of application reads,
 so monotonic milliseconds remain correct across counter wraps.
 
 `ch32v006:delay_ms/1` is intentionally a blocking bring-up helper. While it
-runs, the single scheduler thread cannot execute another AtomVM process. A
-future multi-process support tier should use scheduler-aware timer behavior
-instead of extending this helper.
+runs, the scheduler cannot execute another AtomVM process. The opt-in timer
+tier instead supports scheduler-aware receive timeouts.
 
 ## Validation strategy
 
@@ -194,13 +193,24 @@ RV32E ABI path, stack reservation, allocator, native-interface layout, or
 upstream precompiler/runtime interfaces require renewed hardware
 qualification.
 
-## Peripheral qualification
+## Optional capability tiers
 
-Hello World, GPIO output, and polled GPIO input are qualified today. GPIO
-interrupts, timers, PWM, ADC, UART, I2C, SPI, and a combined application remain
-future work. Each capability should be selected explicitly at compile time so
-unused drivers do not consume the fixed flash and SRAM budgets. See the
-[platform roadmap](roadmap.md) for the intended qualification order and gates.
+The default image remains the hardware-qualified contract described above.
+Experiments use native-image variant bits for concurrency, timers, and byte
+binaries, so firmware cannot silently load code compiled for an absent helper.
+Peripheral drivers are selected independently through `PERIPHERALS`; unused
+drivers are removed at link time.
+
+Binary support is intentionally limited to byte-integer construction and exact
+matching. Sub-binaries currently exceed the RV32E backend's temporary-register
+budget for the acceptance workload and remain an AOT error. Timers require the
+concurrency tier. The current binary tier is separate from concurrency while
+their combined flash and SRAM cost is evaluated.
+
+GPIO interrupts, UART, ADC, I2C, SPI, and PWM now have independently buildable
+acceptance images. They are build-qualified, not yet hardware-qualified. Their
+small direct-NIF APIs are platform experiments rather than compatibility claims
+for AtomVM's port-based peripheral APIs. See the [roadmap](roadmap.md).
 
 ## Design boundary
 

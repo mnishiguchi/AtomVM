@@ -14,7 +14,15 @@ C_STACK_RESERVE_BYTES ?= 1432
 MEMORY_PRESSURE_STACK_RESERVE_BYTES ?= 2048
 ALLOW_SWIO_PIN ?= 0
 CONCURRENCY ?= 0
+TIMERS ?= 0
+BINARIES ?= 0
 MAX_PROCESSES ?= 2
+PERIPHERALS ?=
+SUPPORTED_PERIPHERALS := gpio_irq uart adc i2c spi pwm
+UNKNOWN_PERIPHERALS := $(filter-out $(SUPPORTED_PERIPHERALS),$(PERIPHERALS))
+ifneq ($(strip $(UNKNOWN_PERIPHERALS)),)
+$(error Unsupported PERIPHERALS value(s): $(UNKNOWN_PERIPHERALS))
+endif
 BUILD_DIR := build
 HOST_JIT_DIR := $(BUILD_DIR)/host-jit
 IMAGE_DIR ?= $(BUILD_DIR)/images
@@ -74,6 +82,30 @@ ADDITIONAL_C_FILES := \
     start_beam.S \
     $(addprefix $(ATOMVM_ROOT)/src/libAtomVM/,$(LIBATOMVM_SOURCES))
 
+ifneq ($(strip $(PERIPHERALS)),)
+ADDITIONAL_C_FILES += ch32v006_peripherals.c
+EXTRA_CFLAGS += -DAVM_CH32V006_PERIPHERALS
+endif
+
+ifneq ($(filter gpio_irq,$(PERIPHERALS)),)
+EXTRA_CFLAGS += -DAVM_CH32V006_GPIO_IRQ
+endif
+ifneq ($(filter uart,$(PERIPHERALS)),)
+EXTRA_CFLAGS += -DAVM_CH32V006_UART
+endif
+ifneq ($(filter adc,$(PERIPHERALS)),)
+EXTRA_CFLAGS += -DAVM_CH32V006_ADC
+endif
+ifneq ($(filter i2c,$(PERIPHERALS)),)
+EXTRA_CFLAGS += -DAVM_CH32V006_I2C
+endif
+ifneq ($(filter spi,$(PERIPHERALS)),)
+EXTRA_CFLAGS += -DAVM_CH32V006_SPI
+endif
+ifneq ($(filter pwm,$(PERIPHERALS)),)
+EXTRA_CFLAGS += -DAVM_CH32V006_PWM
+endif
+
 EXTRA_CFLAGS += \
     -std=gnu11 \
     -I$(ATOMVM_ROOT)/src/libAtomVM \
@@ -95,11 +127,29 @@ EXTRA_CFLAGS += \
     -DAVM_CH32V006_MAX_PROCESSES=$(MAX_PROCESSES)
 endif
 
+ifeq ($(TIMERS),1)
+ifneq ($(CONCURRENCY),1)
+$(error TIMERS=1 requires CONCURRENCY=1)
+endif
+AOT_TARGET := riscv32e+minimal+concurrency+timers
+EXPECTED_JIT_VARIANT := 61
+EXTRA_CFLAGS += -DAVM_MINIMAL_RUNTIME_TIMERS
+endif
+
+ifeq ($(BINARIES),1)
+ifneq ($(CONCURRENCY),0)
+$(error BINARIES=1 cannot currently be combined with CONCURRENCY=1)
+endif
+AOT_TARGET := riscv32e+minimal+binaries
+EXPECTED_JIT_VARIANT := 77
+EXTRA_CFLAGS += -DAVM_MINIMAL_RUNTIME_BINARIES
+endif
+
 ifeq ($(ALLOW_SWIO_PIN),1)
 EXTRA_CFLAGS += -DAVM_CH32V006_ALLOW_SWIO_PIN
 endif
 
-ifneq ($(filter ch32v006_self_test ch32v006_gpio_self_test ch32v006_heap_oom_self_test ch32v006_oom_self_test ch32v006_concurrency_self_test,$(START_NAME)),)
+ifneq ($(filter ch32v006_self_test ch32v006_gpio_self_test ch32v006_heap_oom_self_test ch32v006_oom_self_test ch32v006_concurrency_self_test ch32v006_timer_self_test ch32v006_binary_self_test ch32v006_gpio_irq_self_test ch32v006_uart_self_test ch32v006_adc_self_test ch32v006_i2c_self_test ch32v006_spi_self_test ch32v006_pwm_self_test,$(START_NAME)),)
 EXTRA_CFLAGS += -DAVM_CH32V006_SELF_TEST
 endif
 
@@ -121,7 +171,15 @@ JIT_ERLANG_SOURCES := \
     $(ATOMVM_ROOT)/libs/jit/src/jit.erl \
     $(ATOMVM_ROOT)/libs/jit/src/jit_precompile.erl
 
-$(HOST_JIT_DIR)/.stamp: $(JIT_ERLANG_SOURCES)
+JIT_ERLANG_DEPENDENCIES := \
+    $(JIT_ERLANG_SOURCES) \
+    $(ATOMVM_ROOT)/libs/jit/include/jit.hrl \
+    $(ATOMVM_ROOT)/libs/jit/src/compact_term.hrl \
+    $(ATOMVM_ROOT)/libs/jit/src/jit_backend_regs_impl.hrl \
+    $(ATOMVM_ROOT)/libs/jit/src/jit_riscv_impl.hrl \
+    $(ATOMVM_ROOT)/libs/jit/src/primitives.hrl
+
+$(HOST_JIT_DIR)/.stamp: $(JIT_ERLANG_DEPENDENCIES)
 	mkdir -p $(HOST_JIT_DIR)
 	erlc -I $(ATOMVM_ROOT)/libs/jit/include -I $(ATOMVM_ROOT)/libs/jit/src \
 	    -o $(HOST_JIT_DIR) $(JIT_ERLANG_SOURCES)
@@ -153,7 +211,7 @@ endif
 $(EMBEDDED_BEAM): $(PRECOMPILED_BEAM) FORCE
 	cp $< $@
 
-.PHONY: build image verify-image release-image acceptance-images concurrency-image validation-tests flash-uiap monitor-uiap clean help FORCE
+.PHONY: build image verify-image release-image acceptance-images concurrency-image timer-image binary-image peripheral-images validation-tests flash-uiap monitor-uiap clean help FORCE
 FORCE:
 
 build: $(TARGET).bin
@@ -200,6 +258,36 @@ concurrency-image:
 	    START_SOURCE=$(CURDIR)/ch32v006_concurrency_self_test.erl \
 	    IMAGE_BASENAME=AtomVM-$(BOARD)-concurrency-self-test image
 
+timer-image:
+	$(MAKE) -B CONCURRENCY=1 TIMERS=1 \
+	    START_SOURCE=$(CURDIR)/ch32v006_timer_self_test.erl \
+	    IMAGE_BASENAME=AtomVM-$(BOARD)-timer-self-test image
+
+binary-image:
+	$(MAKE) -B BINARIES=1 \
+	    START_SOURCE=$(CURDIR)/ch32v006_binary_self_test.erl \
+	    IMAGE_BASENAME=AtomVM-$(BOARD)-binary-self-test image
+
+peripheral-images:
+	$(MAKE) -B PERIPHERALS=gpio_irq \
+	    START_SOURCE=$(CURDIR)/ch32v006_gpio_irq_self_test.erl \
+	    IMAGE_BASENAME=AtomVM-$(BOARD)-gpio-irq-self-test image
+	$(MAKE) -B PERIPHERALS=uart \
+	    START_SOURCE=$(CURDIR)/ch32v006_uart_self_test.erl \
+	    IMAGE_BASENAME=AtomVM-$(BOARD)-uart-self-test image
+	$(MAKE) -B PERIPHERALS=adc \
+	    START_SOURCE=$(CURDIR)/ch32v006_adc_self_test.erl \
+	    IMAGE_BASENAME=AtomVM-$(BOARD)-adc-self-test image
+	$(MAKE) -B PERIPHERALS=i2c \
+	    START_SOURCE=$(CURDIR)/ch32v006_i2c_self_test.erl \
+	    IMAGE_BASENAME=AtomVM-$(BOARD)-i2c-self-test image
+	$(MAKE) -B PERIPHERALS=spi \
+	    START_SOURCE=$(CURDIR)/ch32v006_spi_self_test.erl \
+	    IMAGE_BASENAME=AtomVM-$(BOARD)-spi-self-test image
+	$(MAKE) -B PERIPHERALS=pwm \
+	    START_SOURCE=$(CURDIR)/ch32v006_pwm_self_test.erl \
+	    IMAGE_BASENAME=AtomVM-$(BOARD)-pwm-self-test image
+
 validation-tests: $(HOST_JIT_DIR)/.stamp
 	erlc -I $(ATOMVM_ROOT)/libs/jit/include -o $(HOST_JIT_DIR) ch32v006_validate_tests.erl
 	erl -pa $(HOST_JIT_DIR) -noshell \
@@ -230,9 +318,12 @@ help:
 	@echo "  release-image      Build a versioned BIN image and SHA-256 file"
 	@echo "  acceptance-images  Build language, GPIO, and default image sets"
 	@echo "  concurrency-image  Build the experimental two-process acceptance image"
+	@echo "  timer-image        Build the experimental receive-timeout acceptance image"
+	@echo "  binary-image       Build the experimental byte-binary acceptance image"
+	@echo "  peripheral-images  Build each experimental peripheral image independently"
 	@echo "  validation-tests   Check the CH32V006 native-code validator"
 	@echo "  flash-uiap         Flash the current image through the UIAP programmer"
 	@echo "  monitor-uiap       Open the UIAP SWIO terminal"
-	@echo "Variables: CH32FUN, MINICHLINK, START_SOURCE, START_BEAM_INPUT, FLASH_IMAGE, ATOMVM_VERSION, C_STACK_RESERVE_BYTES, MEMORY_PRESSURE_STACK_RESERVE_BYTES, ALLOW_SWIO_PIN, CONCURRENCY, MAX_PROCESSES"
+	@echo "Variables: CH32FUN, MINICHLINK, START_SOURCE, START_BEAM_INPUT, FLASH_IMAGE, ATOMVM_VERSION, C_STACK_RESERVE_BYTES, MEMORY_PRESSURE_STACK_RESERVE_BYTES, ALLOW_SWIO_PIN, CONCURRENCY, TIMERS, BINARIES, MAX_PROCESSES, PERIPHERALS"
 
 include $(CH32FUN)/ch32fun.mk

@@ -10,8 +10,8 @@
 start() ->
     ok = spi:init(1000000, 0),
     Result =
-        case spi:transfer(<<16#A5, 16#5A>>) of
-            <<16#A5, 16#5A>> -> passed;
+        case spi:transfer_byte(16#A5) of
+            16#A5 -> passed;
             _ -> failed
         end,
     ch32v006:report(Result).

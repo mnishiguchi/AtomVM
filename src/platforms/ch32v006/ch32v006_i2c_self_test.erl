@@ -11,7 +11,8 @@ start() ->
     ok = i2c:init(100000),
     ch32v006:report(scan(16#08)).
 
-scan(16#78) -> failed;
+scan(16#78) ->
+    failed;
 scan(Address) ->
     case i2c:probe(Address) of
         ok -> passed;

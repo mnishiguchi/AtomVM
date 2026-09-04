@@ -53,6 +53,22 @@ process-heap OOM, and GPIO acceptance images with:
 make CH32FUN=/path/to/ch32fun/ch32fun acceptance-images
 ```
 
+## Experimental capability images
+
+The stable image stays deliberately small. Additional runtime and peripheral
+features are selected at build time and are not implied by a default build:
+
+```sh
+make CH32FUN=/path/to/ch32fun/ch32fun concurrency-image
+make CH32FUN=/path/to/ch32fun/ch32fun timer-image
+make CH32FUN=/path/to/ch32fun/ch32fun binary-image
+make CH32FUN=/path/to/ch32fun/ch32fun peripheral-images
+```
+
+These targets pass AOT, native-instruction, RV32E ABI, and flash-size checks.
+They still require physical-board qualification before promotion to the stable
+tier. See the [roadmap](docs/roadmap.md) for status and measured image sizes.
+
 ## Flash and monitor
 
 ```sh
@@ -115,9 +131,38 @@ unsupported literal types are rejected during AOT generation. Each generated
 image is also decoded to reject x16-x31, hardware divide/remainder,
 floating-point, and other instructions outside `rv32ec_zmmul`.
 
-Only polled GPIO and the blocking delay are currently implemented as platform
-peripherals. GPIO interrupts, timers, PWM, ADC, UART, I2C, and SPI remain a
-qualification roadmap; they are not implied by the platform build.
+Only polled GPIO and the blocking delay belong to the stable platform tier.
+Opt-in experiments add two same-module processes, receive timeouts, byte-sized
+binary construction/matching, GPIO edge polling, UART, ADC, I2C, SPI, and PWM.
+The peripheral APIs are small direct NIFs, not the port-based APIs used by
+larger AtomVM platforms.
+
+Experimental driver pinout and acceptance wiring:
+
+| Driver | Pins | Acceptance setup |
+| --- | --- | --- |
+| GPIO IRQ | PD3 | apply a rising edge to PD3 |
+| UART1 | PD5 TX, PD6 RX | connect PD5 to PD6 |
+| ADC | PA2 (`A0`) through PD4 (`A7`) | channel 0 test reads PA2 |
+| I2C1 | PC1 SDA, PC2 SCL | attach a 7-bit device and pull-ups |
+| SPI1 | PC5 SCK, PC6 MOSI, PC7 MISO | connect PC6 to PC7 |
+| TIM1 PWM | PC3 CH3, PC4 CH4 | observe either PWM output |
+
+The experimental calls are:
+
+- `gpio:set_pin_interrupt/2`, `gpio:interrupt_pending/1`, and
+  `gpio:clear_pin_interrupt/1`
+- `uart:init/1`, `uart:write/1`, and nonblocking `uart:read/0`
+- `adc:read/1` for channels 0 through 7
+- `i2c:init/1`, `i2c:probe/1`, `i2c:write/2`, and `i2c:read/2`
+- `spi:init/2`, `spi:transfer_byte/1`, and `spi:transfer/1`
+- `pwm:init/1` and `pwm:set_duty/2`, where duty is 0 through 1000
+
+The I2C, SPI, and UART byte APIs accept at most 64 bytes per call. Driver calls
+are synchronous and block the single scheduler thread while accessing hardware.
+Select one or more drivers with `PERIPHERALS="uart adc"`. Select byte binary
+construction/matching with `BINARIES=1`; timers require `CONCURRENCY=1
+TIMERS=1`. The binary and concurrency experiments cannot yet be combined.
 
 The allocator reserves 1,432 bytes for the C stack, protects that boundary
 with a production canary, and accepts an experimental override:

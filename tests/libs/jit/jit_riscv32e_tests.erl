@@ -17,6 +17,12 @@
 -define(MINIMAL_CONCURRENCY_VARIANT,
     (?MINIMAL_VARIANT bor ?JIT_VARIANT_MINIMAL_CONCURRENCY)
 ).
+-define(MINIMAL_TIMERS_VARIANT,
+    (?MINIMAL_CONCURRENCY_VARIANT bor ?JIT_VARIANT_MINIMAL_TIMERS)
+).
+-define(MINIMAL_BINARIES_VARIANT,
+    (?MINIMAL_VARIANT bor ?JIT_VARIANT_MINIMAL_BINARIES)
+).
 
 available_registers_test() ->
     State = jit_riscv32e:new(?VARIANT, jit_stream_binary, jit_stream_binary:new(0)),
@@ -77,6 +83,32 @@ minimal_concurrency_rejects_unselected_process_features_test() ->
     ?assertError(
         {unsupported_minimal_runtime_primitive, 30},
         jit_riscv32e:call_primitive(State, 30, [ctx])
+    ).
+
+minimal_timers_accepts_receive_timeout_primitives_test() ->
+    State = jit_riscv32e:new(
+        ?MINIMAL_TIMERS_VARIANT, jit_stream_binary, jit_stream_binary:new(0)
+    ),
+    lists:foreach(
+        fun(Primitive) ->
+            {_NextState, _Result} = jit_riscv32e:call_primitive(State, Primitive, [ctx])
+        end,
+        [24, 30, 31, 33]
+    ).
+
+minimal_binaries_accepts_selected_primitives_test() ->
+    State = jit_riscv32e:new(
+        ?MINIMAL_BINARIES_VARIANT, jit_stream_binary, jit_stream_binary:new(0)
+    ),
+    lists:foreach(
+        fun(Primitive) ->
+            {_NextState, _Result} = jit_riscv32e:call_primitive(State, Primitive, [ctx])
+        end,
+        [44, 45, 46, 52, 57]
+    ),
+    ?assertError(
+        {unsupported_minimal_runtime_primitive, 48},
+        jit_riscv32e:call_primitive(State, 48, [ctx])
     ).
 
 regular_rv32e_keeps_complete_native_interface_test() ->

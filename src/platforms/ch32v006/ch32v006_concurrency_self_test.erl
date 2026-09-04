@@ -14,14 +14,12 @@ start() ->
     receive
         {pong, Child} -> ok
     end,
-    ok = ch32v006:report(passed),
     LimitResult =
         try spawn(?MODULE, child, [Parent]) of
             _UnexpectedPid -> failed
         catch
             error:system_limit -> passed
         end,
-    ok = ch32v006:report(LimitResult),
     Child ! stop,
     receive
         {stopped, Child} -> ch32v006:report(LimitResult)

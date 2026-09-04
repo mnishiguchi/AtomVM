@@ -5,6 +5,7 @@
  */
 
 #include "ch32v006_peripherals.h"
+#include "ch32v006_pins.h"
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -22,8 +23,8 @@
 #define CH32V006_IO_TIMEOUT 100000U
 #define CH32V006_MAX_IO_BYTES 64U
 
-#if defined(AVM_CH32V006_UART) || defined(AVM_CH32V006_ADC) || defined(AVM_CH32V006_I2C) || defined(AVM_CH32V006_SPI)
-static bool wait_register_set(volatile uint32_t *reg, uint32_t mask)
+#if defined(AVM_CH32V006_UART) || defined(AVM_CH32V006_ADC)
+static bool wait_register_set32(volatile uint32_t *reg, uint32_t mask)
 {
     uint32_t timeout = CH32V006_IO_TIMEOUT;
     while ((*reg & mask) == 0U) {
@@ -37,7 +38,19 @@ static bool wait_register_set(volatile uint32_t *reg, uint32_t mask)
 #endif
 
 #if defined(AVM_CH32V006_I2C) || defined(AVM_CH32V006_SPI)
-static bool wait_register_clear(volatile uint32_t *reg, uint32_t mask)
+static bool wait_register_set16(volatile uint16_t *reg, uint16_t mask)
+{
+    uint32_t timeout = CH32V006_IO_TIMEOUT;
+    while ((*reg & mask) == 0U) {
+        if (timeout == 0U) {
+            return false;
+        }
+        --timeout;
+    }
+    return true;
+}
+
+static bool wait_register_clear16(volatile uint16_t *reg, uint16_t mask)
 {
     uint32_t timeout = CH32V006_IO_TIMEOUT;
     while ((*reg & mask) != 0U) {
@@ -79,6 +92,9 @@ static void uart1_init(uint32_t baud)
     funPinMode(PD5, GPIO_CFGLR_OUT_10Mhz_AF_PP);
     funPinMode(PD6, GPIO_CFGLR_IN_FLOAT);
 
+    RCC->PB2PRSTR |= RCC_USART1RST;
+    RCC->PB2PRSTR &= ~RCC_USART1RST;
+
     USART1->CTLR1 = 0;
     USART1->CTLR2 = USART_StopBits_1;
     USART1->CTLR3 = 0;
@@ -112,13 +128,13 @@ static term nif_uart_write(Context *ctx, int argc, term argv[])
     }
     const uint8_t *data = (const uint8_t *) term_binary_data(argv[0]);
     for (size_t i = 0; i < size; ++i) {
-        if (!wait_register_set(&USART1->STATR, USART_STATR_TXE)) {
+        if (!wait_register_set32(&USART1->STATR, USART_STATR_TXE)) {
             return ERROR_ATOM;
         }
         USART1->DATAR = data[i];
     }
 
-    return wait_register_set(&USART1->STATR, USART_STATR_TC)
+    return wait_register_set32(&USART1->STATR, USART_STATR_TC)
         ? term_from_int((avm_int_t) size)
         : ERROR_ATOM;
 }
@@ -182,7 +198,7 @@ static term nif_adc_read(Context *ctx, int argc, term argv[])
     ADC1->SAMPTR2 |= 7U << (3U * (uint32_t) channel);
     ADC1->CTLR2 |= ADC_FLAG_STRT;
 
-    if (!wait_register_set(&ADC1->STATR, ADC_EOC)) {
+    if (!wait_register_set32(&ADC1->STATR, ADC_EOC)) {
         return ERROR_ATOM;
     }
     return term_from_int((avm_int_t) ADC1->RDATAR);
@@ -192,10 +208,12 @@ DEFINE_NIF(adc_read);
 #endif
 
 #ifdef AVM_CH32V006_I2C
-#define I2C_EVENT_MASTER_MODE_SELECT UINT32_C(0x00030001)
+#ifndef I2C_EVENT_MASTER_TRANSMITTER_SELECTED
 #define I2C_EVENT_MASTER_TRANSMITTER_SELECTED UINT32_C(0x00070082)
+#endif
+#ifndef I2C_EVENT_MASTER_RECEIVER_SELECTED
 #define I2C_EVENT_MASTER_RECEIVER_SELECTED UINT32_C(0x00030002)
-#define I2C_EVENT_MASTER_BYTE_TRANSMITTED UINT32_C(0x00070084)
+#endif
 
 static uint32_t i2c_clock_hz;
 
@@ -234,7 +252,7 @@ static bool i2c_wait_event(uint32_t event)
 
 static bool i2c_wait_idle(void)
 {
-    if (!wait_register_clear(&I2C1->STAR2, I2C_STAR2_BUSY)) {
+    if (!wait_register_clear16(&I2C1->STAR2, I2C_STAR2_BUSY)) {
         i2c_recover();
         return false;
     }
@@ -254,9 +272,10 @@ static void i2c_setup(uint32_t clock_hz)
     RCC->APB2PCENR |= RCC_APB2Periph_GPIOC | RCC_APB2Periph_AFIO;
     funPinMode(PC1, GPIO_CFGLR_OUT_10Mhz_AF_OD);
     funPinMode(PC2, GPIO_CFGLR_OUT_10Mhz_AF_OD);
+    AFIO->PCFR1 &= ~AFIO_PCFR1_I2C1_RM;
 
-    RCC->APB1PRSTR |= RCC_APB1Periph_I2C1;
-    RCC->APB1PRSTR &= ~RCC_APB1Periph_I2C1;
+    RCC->PB1PRSTR |= RCC_I2C1RST;
+    RCC->PB1PRSTR &= ~RCC_I2C1RST;
     I2C1->CTLR1 |= I2C_CTLR1_SWRST;
     I2C1->CTLR1 &= ~I2C_CTLR1_SWRST;
 
@@ -292,7 +311,7 @@ static bool i2c_write_bytes(uint8_t address, const uint8_t *data, size_t size)
         return false;
     }
     for (size_t i = 0; i < size; ++i) {
-        if (!wait_register_set(&I2C1->STAR1, I2C_STAR1_TXE)) {
+        if (!wait_register_set16(&I2C1->STAR1, I2C_STAR1_TXE)) {
             i2c_stop();
             i2c_recover();
             return false;
@@ -335,7 +354,7 @@ static bool i2c_start_read_address(uint8_t address)
 
 static bool i2c_wait_status1(uint32_t mask)
 {
-    if (!wait_register_set(&I2C1->STAR1, mask)) {
+    if (!wait_register_set16(&I2C1->STAR1, (uint16_t) mask)) {
         i2c_recover();
         return false;
     }
@@ -469,7 +488,7 @@ static term nif_i2c_write(Context *ctx, int argc, term argv[])
     if (address < 0x08 || address > 0x77 || size > CH32V006_MAX_IO_BYTES) {
         return term_invalid_term();
     }
-    return i2c_write_bytes((uint8_t) address, term_binary_data(argv[1]), size)
+    return i2c_write_bytes((uint8_t) address, (const uint8_t *) term_binary_data(argv[1]), size)
         ? term_from_int((avm_int_t) size)
         : ERROR_ATOM;
 }
@@ -502,10 +521,14 @@ DEFINE_NIF(i2c_read);
 #ifdef AVM_CH32V006_SPI
 static void spi_setup(uint32_t clock_hz, uint32_t mode)
 {
-    RCC->APB2PCENR |= RCC_APB2Periph_GPIOC | RCC_APB2Periph_SPI1;
+    RCC->APB2PCENR |= RCC_APB2Periph_GPIOC | RCC_APB2Periph_AFIO | RCC_APB2Periph_SPI1;
+    AFIO->PCFR1 &= ~AFIO_PCFR1_SPI1_RM;
     funPinMode(PC5, GPIO_CFGLR_OUT_50Mhz_AF_PP);
     funPinMode(PC6, GPIO_CFGLR_OUT_50Mhz_AF_PP);
     funPinMode(PC7, GPIO_CFGLR_IN_FLOAT);
+
+    RCC->PB2PRSTR |= RCC_SPI1RST;
+    RCC->PB2PRSTR &= ~RCC_SPI1RST;
 
     uint32_t divider = 2U;
     uint32_t br = 0U;
@@ -553,7 +576,7 @@ static term nif_spi_transfer(Context *ctx, int argc, term argv[])
     if (size > CH32V006_MAX_IO_BYTES) {
         return term_invalid_term();
     }
-    const uint8_t *tx = term_binary_data(argv[0]);
+    const uint8_t *tx = (const uint8_t *) term_binary_data(argv[0]);
     uint8_t *rx;
     term binary = make_binary(ctx, size, &rx);
     if (term_is_invalid_term(binary)) {
@@ -561,21 +584,45 @@ static term nif_spi_transfer(Context *ctx, int argc, term argv[])
     }
 
     for (size_t i = 0; i < size; ++i) {
-        if (!wait_register_set(&SPI1->STATR, SPI_STATR_TXE)) {
+        if (!wait_register_set16(&SPI1->STATR, SPI_STATR_TXE)) {
             return ERROR_ATOM;
         }
         SPI1->DATAR = tx[i];
-        if (!wait_register_set(&SPI1->STATR, SPI_STATR_RXNE)) {
+        if (!wait_register_set16(&SPI1->STATR, SPI_STATR_RXNE)) {
             return ERROR_ATOM;
         }
         rx[i] = (uint8_t) SPI1->DATAR;
     }
 
-    return wait_register_clear(&SPI1->STATR, SPI_STATR_BSY) ? binary : ERROR_ATOM;
+    return wait_register_clear16(&SPI1->STATR, SPI_STATR_BSY) ? binary : ERROR_ATOM;
+}
+
+static term nif_spi_transfer_byte(Context *ctx, int argc, term argv[])
+{
+    UNUSED(ctx);
+    if (argc != 1 || !term_is_integer(argv[0])) {
+        return term_invalid_term();
+    }
+    avm_int_t value = term_to_int(argv[0]);
+    if (value < 0 || value > UINT8_MAX) {
+        return term_invalid_term();
+    }
+    if (!wait_register_set16(&SPI1->STATR, SPI_STATR_TXE)) {
+        return ERROR_ATOM;
+    }
+    SPI1->DATAR = (uint8_t) value;
+    if (!wait_register_set16(&SPI1->STATR, SPI_STATR_RXNE)) {
+        return ERROR_ATOM;
+    }
+    uint8_t received = (uint8_t) SPI1->DATAR;
+    return wait_register_clear16(&SPI1->STATR, SPI_STATR_BSY)
+        ? term_from_int(received)
+        : ERROR_ATOM;
 }
 
 DEFINE_NIF(spi_init);
 DEFINE_NIF(spi_transfer);
+DEFINE_NIF(spi_transfer_byte);
 #endif
 
 #ifdef AVM_CH32V006_PWM
@@ -605,7 +652,8 @@ static term nif_pwm_init(Context *ctx, int argc, term argv[])
         return term_invalid_term();
     }
 
-    RCC->APB2PCENR |= RCC_APB2Periph_GPIOC | RCC_APB2Periph_TIM1;
+    RCC->APB2PCENR |= RCC_APB2Periph_GPIOC | RCC_APB2Periph_AFIO | RCC_APB2Periph_TIM1;
+    AFIO->PCFR1 &= ~AFIO_PCFR1_TIM1_RM;
     funPinMode(PC3, GPIO_CFGLR_OUT_10Mhz_AF_PP);
     funPinMode(PC4, GPIO_CFGLR_OUT_10Mhz_AF_PP);
     RCC->APB2PRSTR |= RCC_APB2Periph_TIM1;
@@ -613,13 +661,14 @@ static term nif_pwm_init(Context *ctx, int argc, term argv[])
 
     TIM1->PSC = prescaler - 1U;
     TIM1->ATRLR = pwm_period - 1U;
-    TIM1->CHCTLR2 = TIM_OC3M_2 | TIM_OC3M_1 | TIM_OC4M_2 | TIM_OC4M_1;
-    TIM1->CCER |= TIM_CC3E | TIM_CC4E;
+    TIM1->CHCTLR2 = TIM1_CHCTLR2_OC3M_2 | TIM1_CHCTLR2_OC3M_1
+        | TIM1_CHCTLR2_OC4M_2 | TIM1_CHCTLR2_OC4M_1;
+    TIM1->CCER |= TIM1_CCER_CC3E | TIM1_CCER_CC4E;
     TIM1->CH3CVR = 0;
     TIM1->CH4CVR = 0;
-    TIM1->BDTR |= TIM_MOE;
-    TIM1->SWEVGR |= TIM_UG;
-    TIM1->CTLR1 |= TIM_CEN;
+    TIM1->BDTR |= TIM1_BDTR_MOE;
+    TIM1->SWEVGR |= TIM1_SWEVGR_UG;
+    TIM1->CTLR1 |= TIM1_CTLR1_CEN;
     return OK_ATOM;
 }
 
@@ -686,14 +735,9 @@ static bool irq_pin(term pin_term, int32_t *pin, uint32_t *line, uint32_t *port)
         return false;
     }
     *pin = term_to_int32(pin_term);
-    if (*pin == PC0) {
+    if (!ch32v006_pin_is_safe(*pin)) {
         return false;
     }
-#ifndef AVM_CH32V006_ALLOW_SWIO_PIN
-    if (*pin == PD1) {
-        return false;
-    }
-#endif
     int32_t index = *pin & 0xF;
     int32_t port_index = *pin >> 4;
     if (index < 0 || index > 7 || port_index < 0 || port_index > 3) {
@@ -704,7 +748,7 @@ static bool irq_pin(term pin_term, int32_t *pin, uint32_t *line, uint32_t *port)
     return true;
 }
 
-void EXTI7_0_IRQHandler(void) INTERRUPT_DECORATOR;
+void EXTI7_0_IRQHandler(void) INTERRUPT_DECORATOR __attribute__((used));
 void EXTI7_0_IRQHandler(void)
 {
     uint32_t pending = EXTI->INTFR & UINT32_C(0xFF);
@@ -826,6 +870,9 @@ const struct Nif *ch32v006_peripherals_get_nif(const char *nifname)
     }
     if (strcmp("spi:transfer/1", nifname) == 0) {
         return &spi_transfer_nif;
+    }
+    if (strcmp("spi:transfer_byte/1", nifname) == 0) {
+        return &spi_transfer_byte_nif;
     }
 #endif
 #ifdef AVM_CH32V006_PWM

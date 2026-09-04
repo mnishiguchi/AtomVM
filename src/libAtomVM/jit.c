@@ -1129,12 +1129,12 @@ static void jit_mailbox_next(Context *ctx)
 static void jit_cancel_timeout(Context *ctx)
 {
     TRACE("jit_cancel_timeout: ctx->process_id=%" PRId32 "\n", ctx->process_id);
-#ifdef AVM_MINIMAL_RUNTIME_CONCURRENCY
-    UNUSED(ctx);
-#else
+#ifdef AVM_MINIMAL_RUNTIME_TIMERS
     if (context_get_flags(ctx, WaitingTimeout | WaitingTimeoutExpired)) {
         scheduler_cancel_timeout(ctx);
     }
+#else
+    UNUSED(ctx);
 #endif
 }
 
@@ -2103,7 +2103,20 @@ const ModuleNativeInterface module_native_interface = {
     .mailbox_remove_message = jit_mailbox_remove_message,
     .mailbox_next = jit_mailbox_next,
     .cancel_timeout = jit_cancel_timeout,
-    .schedule_wait_cp = jit_schedule_wait_cp
+    .schedule_wait_cp = jit_schedule_wait_cp,
+#ifdef AVM_MINIMAL_RUNTIME_TIMERS
+    .timeout = jit_timeout,
+    .wait_timeout = jit_wait_timeout,
+    .wait_timeout_trap_handler = jit_wait_timeout_trap_handler,
+    .context_get_flags = context_get_flags,
+#endif
+#endif
+#ifdef AVM_MINIMAL_RUNTIME_BINARIES
+    .memory_ensure_free_with_roots = jit_memory_ensure_free_with_roots,
+    .term_alloc_bin_match_state = jit_term_alloc_bin_match_state,
+    .bitstring_extract_integer = jit_bitstring_extract_integer,
+    .term_create_empty_binary = jit_term_create_empty_binary,
+    .bitstring_insert_integer = jit_bitstring_insert_integer,
 #endif
 };
 #else

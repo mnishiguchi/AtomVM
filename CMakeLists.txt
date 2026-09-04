@@ -68,7 +68,9 @@ if (NOT AVM_DISABLE_JIT AND NOT DEFINED AVM_JIT_TARGET_ARCH)
     endif()
 endif()
 
-set(AVM_PRECOMPILED_TARGETS "x86_64;aarch64;arm32;armv6m;armv6m+thumb2;armv6m+thumb2+float32;riscv32;riscv32e;riscv64;wasm32;xtensa;xtensa+float32" CACHE STRING "Targets to precompile code to if AVM_DISABLE_JIT is OFF or AVM_ENABLE_PRECOMPILED is ON")
+# RV32E applications use a constrained target selected by the CH32V006 build;
+# AtomVM's complete libraries do not fit that backend's register/runtime tier.
+set(AVM_PRECOMPILED_TARGETS "x86_64;aarch64;arm32;armv6m;armv6m+thumb2;armv6m+thumb2+float32;riscv32;riscv64;wasm32;xtensa;xtensa+float32" CACHE STRING "Targets to precompile code to if AVM_DISABLE_JIT is OFF or AVM_ENABLE_PRECOMPILED is ON")
 
 # DWARF is not supported on wasm32
 if (NOT AVM_DISABLE_JIT_DWARF)

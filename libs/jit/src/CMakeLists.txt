@@ -115,7 +115,7 @@ endif()
 
 # jit_riscv32.erl and jit_riscv64.erl include the shared implementation in
 # jit_riscv_impl.hrl, so changes to that header must force recompilation.
-foreach(riscv_module jit_riscv32 jit_riscv64)
+foreach(riscv_module jit_riscv32 jit_riscv32e jit_riscv64)
     add_custom_command(
         OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/beams/${riscv_module}.beam
         DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/jit_riscv_impl.hrl
@@ -125,7 +125,7 @@ endforeach()
 
 # The register-based backends include the shared native-register bookkeeping in
 # jit_backend_regs_impl.hrl, so changes to that header must force recompilation.
-foreach(regs_module jit_x86_64 jit_aarch64 jit_arm32 jit_armv6m jit_xtensa jit_riscv32 jit_riscv64)
+foreach(regs_module jit_x86_64 jit_aarch64 jit_arm32 jit_armv6m jit_xtensa jit_riscv32 jit_riscv32e jit_riscv64)
     add_custom_command(
         OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/beams/${regs_module}.beam
         DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/jit_backend_regs_impl.hrl

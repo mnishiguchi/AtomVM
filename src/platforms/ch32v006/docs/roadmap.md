@@ -1,84 +1,84 @@
 # CH32V006 platform roadmap
 
-The current CH32V006 port is a stable, constrained AOT-only AtomVM tier. This
-roadmap explores useful additions without weakening its deterministic build
-boundary or exceeding the board's 63,488-byte flash and 8 KiB SRAM budgets.
+The default CH32V006 image is a stable constrained AOT-only AtomVM tier. New
+capabilities advance independently so experiments cannot weaken that contract
+or silently consume the board's 63,488-byte flash and 8 KiB SRAM budgets.
 
-## Principles
+## Qualification rules
 
-- Keep unsupported BEAM operations as build-time errors.
-- Add capabilities independently at compile time where practical, so unused
-  runtime code and drivers consume no memory.
-- Prefer existing AtomVM APIs when they fit the target.
-- Require host validation, flash-size checks, memory-pressure tests, and
-  physical-board measurements for every expanded support tier.
-- Leave a feature unsupported when it cannot operate reliably within measured
-  flash, heap, and C-stack margins.
+A capability moves to the stable tier only after it has:
 
-## Current baseline
+1. deterministic AOT rejection for unsupported operations;
+2. host, RV32E ABI, native-instruction, and flash-size checks;
+3. a focused physical-board acceptance test; and
+4. measured heap and C-stack headroom under memory pressure.
 
-The qualified tier provides one embedded RV32E AOT module, one process,
-allocation and garbage collection, the documented language subset, polled GPIO,
-and a blocking bring-up delay. Native instruction validation, ABI tests, stack
-protection, and controlled allocation-failure tests guard this baseline.
+If a capability cannot meet those gates, it remains optional or unsupported.
 
-See [design.md](design.md#constrained-runtime-boundary) for the exact support
-contract.
+## Current status
 
-## Completed milestones
+| Capability | Status | Next gate |
+| --- | --- | --- |
+| one module/process, language subset, polled GPIO | stable | preserve regression coverage |
+| two same-module processes, spawn/send/receive | build-qualified experiment | rerun final image on hardware and measure memory |
+| receive timeouts | build-qualified experiment | hardware timing and long-run test |
+| byte-integer binary construction/exact matching | build-qualified experiment | hardware and OOM tests |
+| GPIO edge polling | build-qualified driver | physical rising/falling-edge tests |
+| UART1 | build-qualified driver | PD5/PD6 loopback and error-path tests |
+| ADC | build-qualified driver | known-voltage measurements on PA2/A0 |
+| I2C1 | build-qualified driver | device read/write and bus-recovery tests |
+| SPI1 | build-qualified driver | PC6/PC7 loopback and device test |
+| TIM1 PWM | build-qualified driver | frequency/duty measurements on PC3/PC4 |
 
-- **Exhaustive compressed-code qualification.** All 65,536 halfwords are checked
-  against an independent RV32EC encoding classification. This includes legal
-  instructions and HINTs, RV32E register limits, reserved and custom encodings,
-  non-compressed prefixes, and instructions requiring unsupported extensions.
+“Build-qualified” means the final firmware passes AOT, instruction, ABI, and
+size validation. It does not mean the electrical behavior has been verified.
 
-## Next experiments
+Representative self-test image sizes measured on 2026-09-04:
 
-1. **Probe minimal concurrency.** Behind an experimental build option, measure
-   the cost of two same-module processes using `spawn/3`, send, receive, and
-   reductions-based scheduling. Begin without fun spawning, links, monitors,
-   registered names, or SMP.
-2. **Decide from hardware measurements.** Concurrency advances only if a
-   two-process ping-pong test runs sustainably, allocation failure remains
-   controlled, the stack canary retains measured headroom, and representative
-   applications fit in flash. Otherwise the stable tier remains single-process.
-3. **Add scheduler-aware time.** If concurrency is viable, qualify receive
-   timeouts and process timers. The existing blocking delay remains only a
-   bring-up helper.
-4. **Add bounded binary operations.** Support the smallest construction and
-   matching subset needed by practical peripheral APIs, with explicit memory
-   limits and negative tests.
+| Image | Bytes | Flash remaining |
+| --- | ---: | ---: |
+| ADC | 58,196 | 5,292 |
+| UART | 58,920 | 4,568 |
+| SPI | 59,068 | 4,420 |
+| PWM | 59,248 | 4,240 |
+| I2C | 60,720 | 2,768 |
+| GPIO IRQ | 60,848 | 2,640 |
+| byte binaries | 60,984 | 2,504 |
+| concurrency | 62,652 | 836 |
+| receive timeouts | 63,280 | 208 |
 
-The current cross-compiled profile has a 256-byte fixed `Context` structure per
-process. Each process additionally requires its heap fragments and any queued
-message storage, so the fixed size is only the concurrency experiment's lower
-bound.
+These numbers include one acceptance application and will change with code or
+toolchain revisions. The timer image's 208-byte margin makes it especially
+sensitive to growth.
 
-## Peripheral expansion
+## Near-term work
 
-Qualify GPIO interrupts, UART, timers/PWM, ADC, I2C, and SPI independently.
-Each driver should be compile-time selectable, follow an existing AtomVM API
-where practical, and include a physical-board acceptance application. A small
-combined application should be the final integration test.
-
-Peripheral order may follow concrete application needs. Binary and timer
-dependencies must be included in each driver's flash and SRAM measurements.
+1. Hardware-qualify concurrency and timers, including allocator and stack
+   measurements. Keep the maximum at two processes until evidence supports more.
+2. Hardware-qualify each driver independently, starting with UART loopback and
+   known-voltage ADC, then I2C/SPI devices, PWM, and GPIO edges.
+3. Add controlled binary-allocation failure coverage. Keep sub-binaries, UTF
+   segments, floats, and arbitrary binary copying as AOT errors.
+4. Use the first real peripheral application to decide which runtime and driver
+   combination deserves optimization. Do not enable all experiments by default.
+5. Attempt a small combined application only after its required tiers fit with
+   credible flash, heap, and C-stack margins.
 
 ## Later investigations
 
-- Embed and resolve multiple precompiled AOT modules without introducing a
-  filesystem or dynamic loader.
-- Reassess broader binary and standard-library support after concurrency and
-  peripheral measurements.
-- Investigate maps or floats only for a demonstrated application requirement.
+- Embed and resolve multiple precompiled AOT modules without a filesystem or
+  dynamic loader.
+- Align direct peripheral NIFs with existing AtomVM APIs where the port/resource
+  cost is affordable.
+- Investigate maps, floats, broader binaries, or additional standard-library
+  functions only for a demonstrated application requirement.
 
 The BEAM interpreter, standard AVM archive loading, dynamic module loading,
-ports, and SMP are not current goals. They should remain unsupported unless a
-new implementation can satisfy the same reliability and validation standard.
+ports, and SMP are not current goals.
 
-## Upstream preparation
+## Upstream shape
 
-Keep changes reviewable as RV32E/ILP32E backend support, constrained runtime,
-CH32V006 platform support, UIAPduino board configuration, and examples/tests/CI.
-Rebase onto the intended upstream branch only when preparing the corresponding
-submission.
+Keep reviewable changes separated into RV32E/ILP32E backend support, constrained
+runtime support, CH32V006 MCU support, UIAPduino board configuration, and
+examples/tests/CI. Rebase onto the intended upstream branch when preparing each
+submission rather than continuously moving the experimental branch.

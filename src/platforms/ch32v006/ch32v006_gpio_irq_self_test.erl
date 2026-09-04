@@ -7,7 +7,8 @@
 
 -export([start/0]).
 
--define(TEST_PIN, 51). % PD3
+% PD3
+-define(TEST_PIN, 51).
 
 start() ->
     ok = gpio:init(?TEST_PIN),
@@ -18,10 +19,12 @@ start() ->
     ok = gpio:clear_pin_interrupt(?TEST_PIN),
     ch32v006:report(Result).
 
-wait_for_edge(0) -> failed;
+wait_for_edge(0) ->
+    failed;
 wait_for_edge(Remaining) ->
     case gpio:interrupt_pending(?TEST_PIN) of
-        true -> passed;
+        true ->
+            passed;
         false ->
             ch32v006:delay_ms(10),
             wait_for_edge(Remaining - 1)

@@ -79,6 +79,10 @@ jobs:
           make CH32FUN="$CH32FUN_ROOT/ch32fun" clean
           make CH32FUN="$CH32FUN_ROOT/ch32fun" validation-tests
           make CH32FUN="$CH32FUN_ROOT/ch32fun" acceptance-images
+          make CH32FUN="$CH32FUN_ROOT/ch32fun" concurrency-image
+          make CH32FUN="$CH32FUN_ROOT/ch32fun" timer-image
+          make CH32FUN="$CH32FUN_ROOT/ch32fun" binary-image
+          make CH32FUN="$CH32FUN_ROOT/ch32fun" peripheral-images
           make CH32FUN="$CH32FUN_ROOT/ch32fun" \
             ATOMVM_VERSION="$AVM_IMAGE_VERSION" release-image
 

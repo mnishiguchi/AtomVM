@@ -360,6 +360,23 @@ validate_minimal_primitive(Variant, Primitive) when
         Primitive =:= ?PRIM_SCHEDULE_WAIT_CP)
 ->
     ok;
+validate_minimal_primitive(Variant, Primitive) when
+    Variant band ?JIT_VARIANT_MINIMAL_TIMERS =/= 0,
+    (Primitive =:= ?PRIM_TIMEOUT orelse
+        Primitive =:= ?PRIM_WAIT_TIMEOUT orelse
+        Primitive =:= ?PRIM_WAIT_TIMEOUT_TRAP_HANDLER orelse
+        Primitive =:= ?PRIM_CONTEXT_GET_FLAGS)
+->
+    ok;
+validate_minimal_primitive(Variant, Primitive) when
+    Variant band ?JIT_VARIANT_MINIMAL_BINARIES =/= 0,
+    (Primitive =:= ?PRIM_MEMORY_ENSURE_FREE_WITH_ROOTS orelse
+        Primitive =:= ?PRIM_TERM_ALLOC_BIN_MATCH_STATE orelse
+        Primitive =:= ?PRIM_BITSTRING_EXTRACT_INTEGER orelse
+        Primitive =:= ?PRIM_TERM_CREATE_EMPTY_BINARY orelse
+        Primitive =:= ?PRIM_BITSTRING_INSERT_INTEGER)
+->
+    ok;
 validate_minimal_primitive(_Variant, Primitive) ->
     error({unsupported_minimal_runtime_primitive, Primitive}).
 

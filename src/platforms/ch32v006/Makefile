@@ -13,6 +13,8 @@ FLASH_LIMIT := 63488
 C_STACK_RESERVE_BYTES ?= 1432
 MEMORY_PRESSURE_STACK_RESERVE_BYTES ?= 2048
 ALLOW_SWIO_PIN ?= 0
+CONCURRENCY ?= 0
+MAX_PROCESSES ?= 2
 BUILD_DIR := build
 HOST_JIT_DIR := $(BUILD_DIR)/host-jit
 IMAGE_DIR ?= $(BUILD_DIR)/images
@@ -32,6 +34,8 @@ EMBEDDED_BEAM := $(BUILD_DIR)/start.beam
 ABI_CANARY_BIN := $(BUILD_DIR)/ch32v006_abi_canary.bin
 IMAGE_BASENAME ?= AtomVM-$(BOARD)
 RELEASE_BASENAME ?= AtomVM-$(BOARD)-$(ATOMVM_VERSION)
+AOT_TARGET := riscv32e+minimal
+EXPECTED_JIT_VARIANT := 13
 
 LIBATOMVM_SOURCES := \
     atom.c \
@@ -83,11 +87,19 @@ EXTRA_CFLAGS += \
     -DNDEBUG \
     -DCONFIG_LOG_LEVEL_MAX=0
 
+ifeq ($(CONCURRENCY),1)
+AOT_TARGET := riscv32e+minimal+concurrency
+EXPECTED_JIT_VARIANT := 29
+EXTRA_CFLAGS += \
+    -DAVM_MINIMAL_RUNTIME_CONCURRENCY \
+    -DAVM_CH32V006_MAX_PROCESSES=$(MAX_PROCESSES)
+endif
+
 ifeq ($(ALLOW_SWIO_PIN),1)
 EXTRA_CFLAGS += -DAVM_CH32V006_ALLOW_SWIO_PIN
 endif
 
-ifneq ($(filter ch32v006_self_test ch32v006_gpio_self_test ch32v006_heap_oom_self_test ch32v006_oom_self_test,$(START_NAME)),)
+ifneq ($(filter ch32v006_self_test ch32v006_gpio_self_test ch32v006_heap_oom_self_test ch32v006_oom_self_test ch32v006_concurrency_self_test,$(START_NAME)),)
 EXTRA_CFLAGS += -DAVM_CH32V006_SELF_TEST
 endif
 
@@ -125,23 +137,23 @@ $(PRECOMPILED_BEAM): $(START_BEAM_INPUT) $(HOST_JIT_DIR)/.stamp
 	mkdir -p $(BUILD_DIR)
 	cp $< $@
 	erl -pa $(HOST_JIT_DIR) -noshell \
-	    -eval 'jit_precompile:compile("riscv32e+minimal", "$(BUILD_DIR)", false, "$@"), halt().'
+	    -eval 'jit_precompile:compile("$(AOT_TARGET)", "$(BUILD_DIR)", false, "$@"), halt().'
 	erl -pa $(HOST_JIT_DIR) -noshell \
-	    -eval 'ok = ch32v006_validate:validate_beam("$@"), halt().'
+	    -eval 'ok = ch32v006_validate:validate_beam("$@", $(EXPECTED_JIT_VARIANT)), halt().'
 else
 $(PRECOMPILED_BEAM): $(START_SOURCE) $(HOST_JIT_DIR)/.stamp
 	mkdir -p $(BUILD_DIR)
 	erlc +debug_info -o $(BUILD_DIR) $<
 	erl -pa $(HOST_JIT_DIR) -noshell \
-	    -eval 'jit_precompile:compile("riscv32e+minimal", "$(BUILD_DIR)", false, "$@"), halt().'
+	    -eval 'jit_precompile:compile("$(AOT_TARGET)", "$(BUILD_DIR)", false, "$@"), halt().'
 	erl -pa $(HOST_JIT_DIR) -noshell \
-	    -eval 'ok = ch32v006_validate:validate_beam("$@"), halt().'
+	    -eval 'ok = ch32v006_validate:validate_beam("$@", $(EXPECTED_JIT_VARIANT)), halt().'
 endif
 
 $(EMBEDDED_BEAM): $(PRECOMPILED_BEAM) FORCE
 	cp $< $@
 
-.PHONY: build image verify-image release-image acceptance-images validation-tests flash-uiap monitor-uiap clean help FORCE
+.PHONY: build image verify-image release-image acceptance-images concurrency-image validation-tests flash-uiap monitor-uiap clean help FORCE
 FORCE:
 
 build: $(TARGET).bin
@@ -183,6 +195,11 @@ acceptance-images:
 	$(MAKE) START_SOURCE=$(CURDIR)/ch32v006_minimal.erl \
 	    IMAGE_BASENAME=AtomVM-$(BOARD) image
 
+concurrency-image:
+	$(MAKE) -B CONCURRENCY=1 \
+	    START_SOURCE=$(CURDIR)/ch32v006_concurrency_self_test.erl \
+	    IMAGE_BASENAME=AtomVM-$(BOARD)-concurrency-self-test image
+
 validation-tests: $(HOST_JIT_DIR)/.stamp
 	erlc -I $(ATOMVM_ROOT)/libs/jit/include -o $(HOST_JIT_DIR) ch32v006_validate_tests.erl
 	erl -pa $(HOST_JIT_DIR) -noshell \
@@ -212,9 +229,10 @@ help:
 	@echo "  image              Build a distributable BIN/HEX/ELF image set (default)"
 	@echo "  release-image      Build a versioned BIN image and SHA-256 file"
 	@echo "  acceptance-images  Build language, GPIO, and default image sets"
+	@echo "  concurrency-image  Build the experimental two-process acceptance image"
 	@echo "  validation-tests   Check the CH32V006 native-code validator"
 	@echo "  flash-uiap         Flash the current image through the UIAP programmer"
 	@echo "  monitor-uiap       Open the UIAP SWIO terminal"
-	@echo "Variables: CH32FUN, MINICHLINK, START_SOURCE, START_BEAM_INPUT, FLASH_IMAGE, ATOMVM_VERSION, C_STACK_RESERVE_BYTES, MEMORY_PRESSURE_STACK_RESERVE_BYTES, ALLOW_SWIO_PIN"
+	@echo "Variables: CH32FUN, MINICHLINK, START_SOURCE, START_BEAM_INPUT, FLASH_IMAGE, ATOMVM_VERSION, C_STACK_RESERVE_BYTES, MEMORY_PRESSURE_STACK_RESERVE_BYTES, ALLOW_SWIO_PIN, CONCURRENCY, MAX_PROCESSES"
 
 include $(CH32FUN)/ch32fun.mk

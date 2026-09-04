@@ -321,10 +321,10 @@ validate_primitive(#state{variant = Variant}, Primitive) ->
         0 ->
             ok;
         _ ->
-            validate_minimal_primitive(Primitive)
+            validate_minimal_primitive(Variant, Primitive)
     end.
 
-validate_minimal_primitive(Primitive) when
+validate_minimal_primitive(_Variant, Primitive) when
     Primitive =:= ?PRIM_RAISE_ERROR;
     Primitive =:= ?PRIM_RETURN;
     Primitive =:= ?PRIM_SCHEDULE_NEXT_CP;
@@ -349,7 +349,18 @@ validate_minimal_primitive(Primitive) when
     Primitive =:= ?PRIM_TRY_CASE
 ->
     ok;
-validate_minimal_primitive(Primitive) ->
+validate_minimal_primitive(Variant, Primitive) when
+    Variant band ?JIT_VARIANT_MINIMAL_CONCURRENCY =/= 0,
+    (Primitive =:= ?PRIM_SEND orelse
+        Primitive =:= ?PRIM_PROCESS_SIGNAL_MESSAGES orelse
+        Primitive =:= ?PRIM_MAILBOX_PEEK orelse
+        Primitive =:= ?PRIM_MAILBOX_REMOVE_MESSAGE orelse
+        Primitive =:= ?PRIM_MAILBOX_NEXT orelse
+        Primitive =:= ?PRIM_CANCEL_TIMEOUT orelse
+        Primitive =:= ?PRIM_SCHEDULE_WAIT_CP)
+->
+    ok;
+validate_minimal_primitive(_Variant, Primitive) ->
     error({unsupported_minimal_runtime_primitive, Primitive}).
 
 validate_bif(#state{variant = Variant}, MFA) ->
@@ -357,16 +368,27 @@ validate_bif(#state{variant = Variant}, MFA) ->
         0 ->
             ok;
         _ ->
-            validate_minimal_bif(MFA)
+            validate_minimal_bif(Variant, MFA)
     end.
 
-validate_minimal_bif({erlang, '+', 2}) -> ok;
-validate_minimal_bif({erlang, '-', 2}) -> ok;
-validate_minimal_bif({erlang, '*', 2}) -> ok;
-validate_minimal_bif({erlang, 'div', 2}) -> ok;
-validate_minimal_bif({erlang, 'rem', 2}) -> ok;
-validate_minimal_bif({erlang, length, 1}) -> ok;
-validate_minimal_bif(MFA) -> error({unsupported_minimal_runtime_bif, MFA}).
+validate_minimal_bif(_Variant, {erlang, '+', 2}) ->
+    ok;
+validate_minimal_bif(_Variant, {erlang, '-', 2}) ->
+    ok;
+validate_minimal_bif(_Variant, {erlang, '*', 2}) ->
+    ok;
+validate_minimal_bif(_Variant, {erlang, 'div', 2}) ->
+    ok;
+validate_minimal_bif(_Variant, {erlang, 'rem', 2}) ->
+    ok;
+validate_minimal_bif(_Variant, {erlang, length, 1}) ->
+    ok;
+validate_minimal_bif(Variant, {erlang, self, 0}) when
+    Variant band ?JIT_VARIANT_MINIMAL_CONCURRENCY =/= 0
+->
+    ok;
+validate_minimal_bif(_Variant, MFA) ->
+    error({unsupported_minimal_runtime_bif, MFA}).
 
 validate_external_call(#state{variant = Variant}, {erlang, apply, Arity} = MFA) when
     Variant band ?JIT_VARIANT_MINIMAL =/= 0, (Arity =:= 2 orelse Arity =:= 3)

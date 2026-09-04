@@ -5,7 +5,7 @@
 %
 -module(ch32v006_validate).
 
--export([validate_beam/1, validate_code/1]).
+-export([validate_beam/1, validate_beam/2, validate_code/1]).
 
 -include_lib("jit.hrl").
 
@@ -14,10 +14,13 @@
 ).
 
 validate_beam(Path) ->
+    validate_beam(Path, ?EXPECTED_VARIANT).
+
+validate_beam(Path, ExpectedVariant) ->
     {ok, Beam} = file:read_file(Path),
     AvmN = find_chunk(<<"avmN">>, Beam),
     <<InfoSize:32, Info:InfoSize/binary, Code/binary>> = AvmN,
-    validate_header(Info),
+    validate_header(Info, ExpectedVariant),
     ExecutableCode = executable_code(Code),
     case validate_code(ExecutableCode) of
         ok ->
@@ -30,10 +33,11 @@ validate_beam(Path) ->
     end.
 
 validate_header(
-    <<_Labels:32, ?JIT_FORMAT_VERSION:16, 1:16, ?JIT_ARCH_RISCV32:16, ?EXPECTED_VARIANT:16, 0:32>>
+    <<_Labels:32, ?JIT_FORMAT_VERSION:16, 1:16, ?JIT_ARCH_RISCV32:16, ExpectedVariant:16, 0:32>>,
+    ExpectedVariant
 ) ->
     ok;
-validate_header(Info) ->
+validate_header(Info, _ExpectedVariant) ->
     error({invalid_ch32v006_native_header, Info}).
 
 % Label zero points to the final helper function.  The bytes after its eight
@@ -240,9 +244,9 @@ validate_c_addi4spn(Instruction) ->
 
 validate_c_lui_addi16sp(Instruction, RdRs1) ->
     Immediate = Instruction band 16#107C,
-    case {RdRs1, Immediate} of
+    case {Immediate, RdRs1} of
         {0, _} -> {error, reserved_compressed_lui};
-        {_, 0} -> {error, reserved_compressed_lui};
+        {_, 0} -> ok;
         _ -> validate_registers([RdRs1])
     end.
 
@@ -260,14 +264,12 @@ validate_c_arithmetic(Instruction, Bit12) ->
 
 validate_c_cr(Bit12, RdRs1, Rs2) ->
     case {Bit12, RdRs1, Rs2} of
-        {0, 0, _} ->
+        {0, 0, 0} ->
             {error, reserved_compressed_cr};
         {0, _, _} ->
             validate_registers([RdRs1, Rs2]);
         {1, 0, 0} ->
             ok;
-        {1, 0, _} ->
-            {error, reserved_compressed_cr};
         {1, _, _} ->
             validate_registers([RdRs1, Rs2])
     end.

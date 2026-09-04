@@ -8,7 +8,9 @@
 -export([run/0]).
 
 run() ->
+    ok = exhaustive_compressed_encodings(),
     ok = valid_rv32ec_zmmul(),
+    ok = valid_rv32c_hints(),
     ok = rv32i_only_register(),
     ok = hardware_divide(),
     ok = hardware_remainder(),
@@ -20,6 +22,98 @@ run() ->
     ok = reserved_compressed_addi4spn(),
     io:format("CH32V006 native-code validation tests passed~n"),
     ok.
+
+% This is intentionally separate from ch32v006_validate's decoder.  It follows
+% the RV32C opcode map and operand constraints in the RISC-V Unprivileged ISA
+% specification, then applies RV32E's x0-x15 register limit.  Enumerating every
+% halfword detects both unsafe acceptance and accidental rejection of legal
+% instructions and HINTs.
+exhaustive_compressed_encodings() ->
+    lists:foreach(
+        fun(Instruction) ->
+            Expected = rv32ec_classification(Instruction),
+            Actual = validator_classification(Instruction),
+            case Actual of
+                Expected -> ok;
+                _ -> error({compressed_classification_mismatch, Instruction, Expected, Actual})
+            end
+        end,
+        lists:seq(0, 16#FFFF)
+    ).
+
+validator_classification(Instruction) ->
+    case ch32v006_validate:validate_code(<<Instruction:16/little>>) of
+        ok -> supported;
+        {error, {0, _Tail, truncated_instruction}} -> longer_instruction;
+        {error, {0, _Encoding, _Reason}} -> unsupported
+    end.
+
+rv32ec_classification(Instruction) ->
+    Quadrant = Instruction band 3,
+    Funct3 = (Instruction bsr 13) band 7,
+    RdRs1 = (Instruction bsr 7) band 16#1F,
+    Rs2 = (Instruction bsr 2) band 16#1F,
+    Bit12 = (Instruction bsr 12) band 1,
+    case {Quadrant, Funct3} of
+        {3, _} ->
+            longer_instruction;
+        {0, 0} ->
+            classify((Instruction band 16#1FE0) =/= 0);
+        {0, 2} ->
+            supported;
+        {0, 6} ->
+            supported;
+        {1, 0} ->
+            classify_rv32e_registers([RdRs1]);
+        {1, 1} ->
+            supported;
+        {1, 2} ->
+            classify_rv32e_registers([RdRs1]);
+        {1, 3} ->
+            classify_c_lui_addi16sp(Instruction, RdRs1);
+        {1, 4} ->
+            classify_c_arithmetic(Instruction, Bit12);
+        {1, Funct3} when Funct3 >= 5 ->
+            supported;
+        {2, 0} ->
+            classify(Bit12 =:= 0 andalso RdRs1 =< 15);
+        {2, 2} ->
+            classify(RdRs1 >= 1 andalso RdRs1 =< 15);
+        {2, 4} ->
+            classify_c_cr(Bit12, RdRs1, Rs2);
+        {2, 6} ->
+            classify_rv32e_registers([Rs2]);
+        _ ->
+            unsupported
+    end.
+
+classify_c_lui_addi16sp(Instruction, RdRs1) ->
+    NonZeroImmediate = Instruction band 16#107C,
+    classify(NonZeroImmediate =/= 0 andalso RdRs1 =< 15).
+
+classify_c_arithmetic(Instruction, Bit12) ->
+    Subop = (Instruction bsr 10) band 3,
+    classify(
+        (Subop =:= 0 andalso Bit12 =:= 0) orelse
+            (Subop =:= 1 andalso Bit12 =:= 0) orelse
+            Subop =:= 2 orelse
+            (Subop =:= 3 andalso Bit12 =:= 0)
+    ).
+
+classify_c_cr(Bit12, RdRs1, Rs2) ->
+    RegistersExist = RdRs1 =< 15 andalso Rs2 =< 15,
+    Reserved = Bit12 =:= 0 andalso RdRs1 =:= 0 andalso Rs2 =:= 0,
+    classify(RegistersExist andalso not Reserved).
+
+classify_rv32e_registers(Registers) ->
+    classify(lists:all(fun(Register) -> Register =< 15 end, Registers)).
+
+classify(true) -> supported;
+classify(false) -> unsupported.
+
+valid_rv32c_hints() ->
+    % c.lui x0,1; c.mv x0,a0; c.add x0,a0
+    ch32v006_validate:validate_code(<<16#6005:16/little, 16#802A:16/little, 16#902A:16/little>>).
 
 valid_rv32ec_zmmul() ->
     Code = <<

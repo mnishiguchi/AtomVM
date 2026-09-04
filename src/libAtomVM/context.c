@@ -158,6 +158,9 @@ void context_destroy(Context *ctx)
     list_remove(&ctx->processes_table_head);
     synclist_unlock(&ctx->global->processes_table);
 
+#ifdef AVM_MINIMAL_RUNTIME_CONCURRENCY
+    mailbox_destroy(&ctx->mailbox, &ctx->heap);
+#endif
     memory_destroy_heap(&ctx->heap, ctx->global);
     free(ctx);
 #else

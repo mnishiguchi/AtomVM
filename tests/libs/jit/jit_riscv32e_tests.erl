@@ -14,6 +14,9 @@
 
 -define(VARIANT, (?JIT_VARIANT_PIC bor ?JIT_VARIANT_RV32E)).
 -define(MINIMAL_VARIANT, (?VARIANT bor ?JIT_VARIANT_MINIMAL)).
+-define(MINIMAL_CONCURRENCY_VARIANT,
+    (?MINIMAL_VARIANT bor ?JIT_VARIANT_MINIMAL_CONCURRENCY)
+).
 
 available_registers_test() ->
     State = jit_riscv32e:new(?VARIANT, jit_stream_binary, jit_stream_binary:new(0)),
@@ -49,6 +52,31 @@ minimal_runtime_rejects_dynamic_apply_test() ->
     ?assertError(
         {unsupported_minimal_runtime_external_call, {erlang, apply, 3}},
         jit_riscv32e:validate_external_call(State, {erlang, apply, 3})
+    ).
+
+minimal_concurrency_accepts_process_primitives_test() ->
+    State = jit_riscv32e:new(
+        ?MINIMAL_CONCURRENCY_VARIANT, jit_stream_binary, jit_stream_binary:new(0)
+    ),
+    lists:foreach(
+        fun(Primitive) ->
+            {_NextState, _Result} = jit_riscv32e:call_primitive(State, Primitive, [ctx])
+        end,
+        [17, 21, 22, 23, 25, 26, 29]
+    ),
+    ok = jit_riscv32e:validate_bif(State, {erlang, self, 0}).
+
+minimal_concurrency_rejects_unselected_process_features_test() ->
+    State = jit_riscv32e:new(
+        ?MINIMAL_CONCURRENCY_VARIANT, jit_stream_binary, jit_stream_binary:new(0)
+    ),
+    ?assertError(
+        {unsupported_minimal_runtime_primitive, 20},
+        jit_riscv32e:call_primitive(State, 20, [ctx])
+    ),
+    ?assertError(
+        {unsupported_minimal_runtime_primitive, 30},
+        jit_riscv32e:call_primitive(State, 30, [ctx])
     ).
 
 regular_rv32e_keeps_complete_native_interface_test() ->

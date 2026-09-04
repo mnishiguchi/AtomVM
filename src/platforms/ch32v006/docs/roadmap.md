@@ -25,25 +25,34 @@ protection, and controlled allocation-failure tests guard this baseline.
 See [design.md](design.md#constrained-runtime-boundary) for the exact support
 contract.
 
-## Near term
+## Completed milestones
 
-1. **Complete validator qualification.** Exercise all 16-bit compressed
-   encodings against an independent RV32EC classification and extend ABI
-   regression cases when backend call paths change.
-2. **Probe minimal concurrency.** Behind an experimental build option, measure
+- **Exhaustive compressed-code qualification.** All 65,536 halfwords are checked
+  against an independent RV32EC encoding classification. This includes legal
+  instructions and HINTs, RV32E register limits, reserved and custom encodings,
+  non-compressed prefixes, and instructions requiring unsupported extensions.
+
+## Next experiments
+
+1. **Probe minimal concurrency.** Behind an experimental build option, measure
    the cost of two same-module processes using `spawn/3`, send, receive, and
    reductions-based scheduling. Begin without fun spawning, links, monitors,
    registered names, or SMP.
-3. **Decide from hardware measurements.** Concurrency advances only if a
+2. **Decide from hardware measurements.** Concurrency advances only if a
    two-process ping-pong test runs sustainably, allocation failure remains
    controlled, the stack canary retains measured headroom, and representative
    applications fit in flash. Otherwise the stable tier remains single-process.
-4. **Add scheduler-aware time.** If concurrency is viable, qualify receive
+3. **Add scheduler-aware time.** If concurrency is viable, qualify receive
    timeouts and process timers. The existing blocking delay remains only a
    bring-up helper.
-5. **Add bounded binary operations.** Support the smallest construction and
+4. **Add bounded binary operations.** Support the smallest construction and
    matching subset needed by practical peripheral APIs, with explicit memory
    limits and negative tests.
+
+The current cross-compiled profile has a 256-byte fixed `Context` structure per
+process. Each process additionally requires its heap fragments and any queued
+message storage, so the fixed size is only the concurrency experiment's lower
+bound.
 
 ## Peripheral expansion
 

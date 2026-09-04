@@ -41,6 +41,7 @@ start() ->
 %%   "armv6m+float32" -> {"armv6m", ?JIT_VARIANT_PIC + ?JIT_VARIANT_FLOAT32}
 %%   "armv6m+thumb2" -> {"armv6m", ?JIT_VARIANT_PIC + ?JIT_VARIANT_THUMB2}
 %%   "riscv32e+minimal" -> {"riscv32e", ?JIT_VARIANT_PIC + ?JIT_VARIANT_MINIMAL}
+%%   "riscv32e+minimal+concurrency" -> constrained RV32E with process support
 %%   "x86_64" -> {"x86_64", ?JIT_VARIANT_PIC}
 parse_target(Target) ->
     case string:split(Target, "+", all) of
@@ -53,6 +54,7 @@ parse_target(Target) ->
                         "float32" -> Acc + ?JIT_VARIANT_FLOAT32;
                         "thumb2" -> Acc + ?JIT_VARIANT_THUMB2;
                         "minimal" -> Acc + ?JIT_VARIANT_MINIMAL;
+                        "concurrency" -> Acc + ?JIT_VARIANT_MINIMAL_CONCURRENCY;
                         _ -> error({unsupported_variant, Variant})
                     end
                 end,
@@ -69,6 +71,17 @@ compile(Target, Dir, Dwarf, Path) ->
             {"riscv32e", _} -> ok;
             {_, 0} -> ok;
             _ -> error({unsupported_variant_for_target, minimal, BaseTarget})
+        end,
+        case RequestedVariant0 band ?JIT_VARIANT_MINIMAL_CONCURRENCY of
+            0 ->
+                ok;
+            _ when
+                BaseTarget =:= "riscv32e",
+                RequestedVariant0 band ?JIT_VARIANT_MINIMAL =/= 0
+            ->
+                ok;
+            _ ->
+                error({unsupported_variant_for_target, concurrency, BaseTarget})
         end,
         {ok, InitialBinary} = file:read_file(Path),
         {ok, Module, InitialChunks} = beam_lib:all_chunks(InitialBinary),

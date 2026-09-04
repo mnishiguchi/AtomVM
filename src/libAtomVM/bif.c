@@ -90,6 +90,14 @@ static void conv_term_to_bigint(term t, intn_digit_t *tmp_buf, const intn_digit_
 const struct ExportedFunction *bif_registry_get_handler(const char *mfa)
 {
 #ifdef AVM_MINIMAL_BIFS
+#ifdef AVM_MINIMAL_RUNTIME_CONCURRENCY
+    static const struct Bif self_bif = {
+        .base.type = BIFFunctionType, .bif0_ptr = bif_erlang_self_0
+    };
+    if (strcmp("erlang:self/0", mfa) == 0) {
+        return &self_bif.base;
+    }
+#endif
     static const struct
     {
         const char *mfa;

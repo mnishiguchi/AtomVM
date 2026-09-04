@@ -859,6 +859,26 @@ static bool jit_send(Context *ctx, JITState *jit_state)
 {
     TRACE("jit_send: recipient=%p message=%p\n", (void *) ctx->x[0], (void *) ctx->x[1]);
     term recipient_term = ctx->x[0];
+#ifdef AVM_MINIMAL_RUNTIME_CONCURRENCY
+    if (UNLIKELY(!term_is_local_pid(recipient_term))) {
+        set_error(ctx, jit_state, 0, BADARG_ATOM);
+        return false;
+    }
+
+    int local_process_id = term_to_local_process_id(recipient_term);
+    Context *recipient = globalcontext_get_process_lock(ctx->global, local_process_id);
+    if (recipient) {
+        MailboxMessage *message = mailbox_message_create_from_term(NormalMessage, ctx->x[1]);
+        if (UNLIKELY(IS_NULL_PTR(message))) {
+            globalcontext_get_process_unlock(ctx->global, recipient);
+            set_error(ctx, jit_state, 0, OUT_OF_MEMORY_ATOM);
+            return false;
+        }
+        mailbox_post_message(recipient, message);
+        globalcontext_get_process_unlock(ctx->global, recipient);
+    }
+    ctx->x[0] = ctx->x[1];
+#else
     if (UNLIKELY(term_is_external_pid(recipient_term) || term_is_tuple(recipient_term))) {
         term return_value = dist_send_message(recipient_term, ctx->x[1], ctx);
         if (UNLIKELY(term_is_invalid_term(return_value))) {
@@ -890,6 +910,7 @@ static bool jit_send(Context *ctx, JITState *jit_state)
         // reference. Outbound distributed aliases are unsupported.
         ctx->x[0] = ctx->x[1];
     }
+#endif
 
     return true;
 }
@@ -915,6 +936,15 @@ static term *jit_extended_register_ptr(Context *ctx, unsigned int index)
 static Context *jit_process_signal_messages(Context *ctx, JITState *jit_state)
 {
     TRACE("jit_process_signal_messages\n");
+#ifdef AVM_MINIMAL_RUNTIME_CONCURRENCY
+    UNUSED(jit_state);
+    MailboxMessage *signal_message = mailbox_process_outer_list_native(&ctx->mailbox);
+    if (UNLIKELY(signal_message != NULL)) {
+        fprintf(stderr, "Unsupported signal in minimal concurrency runtime\n");
+        AVM_ABORT();
+    }
+    return ctx;
+#else
     MailboxMessage *signal_message = mailbox_process_outer_list(ctx);
     bool handle_error = false;
     bool reprocess_outer = false;
@@ -1063,6 +1093,7 @@ static Context *jit_process_signal_messages(Context *ctx, JITState *jit_state)
         return jit_schedule_wait_cp(ctx, jit_state);
     }
     return ctx;
+#endif
 }
 
 static term jit_mailbox_peek(Context *ctx)
@@ -1098,9 +1129,13 @@ static void jit_mailbox_next(Context *ctx)
 static void jit_cancel_timeout(Context *ctx)
 {
     TRACE("jit_cancel_timeout: ctx->process_id=%" PRId32 "\n", ctx->process_id);
+#ifdef AVM_MINIMAL_RUNTIME_CONCURRENCY
+    UNUSED(ctx);
+#else
     if (context_get_flags(ctx, WaitingTimeout | WaitingTimeoutExpired)) {
         scheduler_cancel_timeout(ctx);
     }
+#endif
 }
 
 static void jit_clear_timeout_flag(Context *ctx)
@@ -2060,7 +2095,16 @@ const ModuleNativeInterface module_native_interface = {
     .catch_end = jit_catch_end,
     .raw_raise = jit_raw_raise,
     .raise_error_mfa = jit_raise_error_mfa,
-    .try_case = jit_try_case
+    .try_case = jit_try_case,
+#ifdef AVM_MINIMAL_RUNTIME_CONCURRENCY
+    .send = jit_send,
+    .process_signal_messages = jit_process_signal_messages,
+    .mailbox_peek = jit_mailbox_peek,
+    .mailbox_remove_message = jit_mailbox_remove_message,
+    .mailbox_next = jit_mailbox_next,
+    .cancel_timeout = jit_cancel_timeout,
+    .schedule_wait_cp = jit_schedule_wait_cp
+#endif
 };
 #else
 const ModuleNativeInterface module_native_interface = {

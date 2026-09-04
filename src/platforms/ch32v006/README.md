@@ -9,6 +9,7 @@ this is a deliberately constrained AtomVM tier, not ESP32 feature parity.
 - [Elixir examples](../../../examples/elixir/ch32v006/README.md): LED blink and
   button input
 - [Design](DESIGN.md): AOT, ABI, memory, timing, and validation rationale
+- [Architecture decisions](docs/adr/README.md): durable platform boundaries
 
 ## Requirements
 

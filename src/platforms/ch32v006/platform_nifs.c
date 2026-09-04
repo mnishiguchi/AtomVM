@@ -69,6 +69,12 @@ static bool pin_is_safe(int32_t pin)
     if (pin == PC0) {
         return false;
     }
+#ifndef AVM_CH32V006_ALLOW_SWIO_PIN
+    // PD1 is the only programming/debug interface and is reserved by default.
+    if (pin == PD1) {
+        return false;
+    }
+#endif
 
     int32_t port = pin >> 4;
     int32_t index = pin & 0xF;

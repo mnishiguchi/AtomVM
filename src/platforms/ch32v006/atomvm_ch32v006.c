@@ -23,6 +23,9 @@ bool platform_stack_guard_ok(void);
 bool ch32v006_run_abi_canary(void);
 void platform_stack_probe_start(void);
 #endif
+#ifdef AVM_CH32V006_OOM_SELF_TEST
+void platform_allocator_fail_next(void);
+#endif
 
 static void show_result(bool success)
 {
@@ -72,8 +75,16 @@ int main(void)
         show_result(false);
     }
 
-    run_result_t result = globalcontext_run(global, module, NULL, 0, NULL);
+    run_result_t result;
+#ifdef AVM_CH32V006_OOM_SELF_TEST
+    platform_allocator_fail_next();
+    result = globalcontext_run(global, module, NULL, 0, NULL);
+    bool success = result == RUN_MEMORY_FAILURE && platform_stack_guard_ok();
+    printf("AtomVM initial-process OOM: %s\n", success ? "passed" : "failed");
+#else
+    result = globalcontext_run(global, module, NULL, 0, NULL);
     bool success = result == RUN_SUCCESS && platform_stack_guard_ok();
+#endif
     if (!platform_stack_guard_ok()) {
         printf("FAIL C stack guard\n");
     }

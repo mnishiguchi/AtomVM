@@ -11,6 +11,8 @@ TARGET_MCU := CH32V006
 BOARD := uiapduino-pro-micro-ch32v006
 FLASH_LIMIT := 63488
 C_STACK_RESERVE_BYTES ?= 1432
+MEMORY_PRESSURE_STACK_RESERVE_BYTES ?= 2048
+ALLOW_SWIO_PIN ?= 0
 BUILD_DIR := build
 HOST_JIT_DIR := $(BUILD_DIR)/host-jit
 IMAGE_DIR ?= $(BUILD_DIR)/images
@@ -81,14 +83,24 @@ EXTRA_CFLAGS += \
     -DNDEBUG \
     -DCONFIG_LOG_LEVEL_MAX=0
 
-ifneq ($(filter ch32v006_self_test ch32v006_gpio_self_test,$(START_NAME)),)
+ifeq ($(ALLOW_SWIO_PIN),1)
+EXTRA_CFLAGS += -DAVM_CH32V006_ALLOW_SWIO_PIN
+endif
+
+ifneq ($(filter ch32v006_self_test ch32v006_gpio_self_test ch32v006_oom_self_test,$(START_NAME)),)
 EXTRA_CFLAGS += -DAVM_CH32V006_SELF_TEST
+endif
+
+ifeq ($(START_NAME),ch32v006_oom_self_test)
+EXTRA_CFLAGS += -DAVM_CH32V006_OOM_SELF_TEST
 endif
 
 EXTRA_ELF_DEPENDENCIES := $(EMBEDDED_BEAM) $(ABI_CANARY_BIN)
 
 JIT_ERLANG_SOURCES := \
     ch32v006_abi_canary_gen.erl \
+    ch32v006_negative_tests.erl \
+    ch32v006_validate.erl \
     $(ATOMVM_ROOT)/libs/jit/src/jit_regs.erl \
     $(ATOMVM_ROOT)/libs/jit/src/jit_stream_binary.erl \
     $(ATOMVM_ROOT)/libs/jit/src/jit_riscv32_asm.erl \
@@ -113,19 +125,23 @@ $(PRECOMPILED_BEAM): $(START_BEAM_INPUT) $(HOST_JIT_DIR)/.stamp
 	mkdir -p $(BUILD_DIR)
 	cp $< $@
 	erl -pa $(HOST_JIT_DIR) -noshell \
-	    -eval 'jit_precompile:compile("riscv32e", "$(BUILD_DIR)", false, "$@"), halt().'
+	    -eval 'jit_precompile:compile("riscv32e+minimal", "$(BUILD_DIR)", false, "$@"), halt().'
+	erl -pa $(HOST_JIT_DIR) -noshell \
+	    -eval 'ok = ch32v006_validate:validate_beam("$@"), halt().'
 else
 $(PRECOMPILED_BEAM): $(START_SOURCE) $(HOST_JIT_DIR)/.stamp
 	mkdir -p $(BUILD_DIR)
 	erlc +debug_info -o $(BUILD_DIR) $<
 	erl -pa $(HOST_JIT_DIR) -noshell \
-	    -eval 'jit_precompile:compile("riscv32e", "$(BUILD_DIR)", false, "$@"), halt().'
+	    -eval 'jit_precompile:compile("riscv32e+minimal", "$(BUILD_DIR)", false, "$@"), halt().'
+	erl -pa $(HOST_JIT_DIR) -noshell \
+	    -eval 'ok = ch32v006_validate:validate_beam("$@"), halt().'
 endif
 
 $(EMBEDDED_BEAM): $(PRECOMPILED_BEAM) FORCE
 	cp $< $@
 
-.PHONY: build image verify-image release-image acceptance-images flash-uiap monitor-uiap clean help FORCE
+.PHONY: build image verify-image release-image acceptance-images validation-tests flash-uiap monitor-uiap clean help FORCE
 FORCE:
 
 build: $(TARGET).bin
@@ -155,10 +171,23 @@ release-image: verify-image
 acceptance-images:
 	$(MAKE) START_SOURCE=$(CURDIR)/ch32v006_self_test.erl \
 	    IMAGE_BASENAME=AtomVM-$(BOARD)-language-self-test image
+	$(MAKE) -B START_SOURCE=$(CURDIR)/ch32v006_self_test.erl \
+	    C_STACK_RESERVE_BYTES=$(MEMORY_PRESSURE_STACK_RESERVE_BYTES) \
+	    IMAGE_BASENAME=AtomVM-$(BOARD)-memory-pressure-self-test image
 	$(MAKE) START_SOURCE=$(CURDIR)/ch32v006_gpio_self_test.erl \
 	    IMAGE_BASENAME=AtomVM-$(BOARD)-gpio-self-test image
+	$(MAKE) START_SOURCE=$(CURDIR)/ch32v006_oom_self_test.erl \
+	    IMAGE_BASENAME=AtomVM-$(BOARD)-oom-self-test image
 	$(MAKE) START_SOURCE=$(CURDIR)/ch32v006_minimal.erl \
 	    IMAGE_BASENAME=AtomVM-$(BOARD) image
+
+validation-tests: $(HOST_JIT_DIR)/.stamp
+	erlc -I $(ATOMVM_ROOT)/libs/jit/include -o $(HOST_JIT_DIR) ch32v006_validate_tests.erl
+	erl -pa $(HOST_JIT_DIR) -noshell \
+	    -eval 'ok = ch32v006_validate_tests:run(), halt().'
+	mkdir -p $(BUILD_DIR)/unsupported
+	erl -pa $(HOST_JIT_DIR) -noshell \
+	    -eval 'ok = ch32v006_negative_tests:run("$(CURDIR)/tests/unsupported", "$(BUILD_DIR)/unsupported"), halt().'
 
 flash-uiap:
 	@test -x "$(MINICHLINK)/minichlink" || \
@@ -181,8 +210,9 @@ help:
 	@echo "  image              Build a distributable BIN/HEX/ELF image set (default)"
 	@echo "  release-image      Build a versioned BIN image and SHA-256 file"
 	@echo "  acceptance-images  Build language, GPIO, and default image sets"
+	@echo "  validation-tests   Check the CH32V006 native-code validator"
 	@echo "  flash-uiap         Flash the current image through the UIAP programmer"
 	@echo "  monitor-uiap       Open the UIAP SWIO terminal"
-	@echo "Variables: CH32FUN, MINICHLINK, START_SOURCE, START_BEAM_INPUT, FLASH_IMAGE, ATOMVM_VERSION, C_STACK_RESERVE_BYTES"
+	@echo "Variables: CH32FUN, MINICHLINK, START_SOURCE, START_BEAM_INPUT, FLASH_IMAGE, ATOMVM_VERSION, C_STACK_RESERVE_BYTES, MEMORY_PRESSURE_STACK_RESERVE_BYTES, ALLOW_SWIO_PIN"
 
 include $(CH32FUN)/ch32fun.mk

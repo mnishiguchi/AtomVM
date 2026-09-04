@@ -13,10 +13,49 @@
 -include("jit/include/jit.hrl").
 
 -define(VARIANT, (?JIT_VARIANT_PIC bor ?JIT_VARIANT_RV32E)).
+-define(MINIMAL_VARIANT, (?VARIANT bor ?JIT_VARIANT_MINIMAL)).
 
 available_registers_test() ->
     State = jit_riscv32e:new(?VARIANT, jit_stream_binary, jit_stream_binary:new(0)),
     ?assertEqual([t2, t1, t0], jit_riscv32e:available_regs(State)).
+
+zmmul_backend_does_not_advertise_hardware_division_test() ->
+    Exports = jit_riscv32e:module_info(exports),
+    ?assertEqual(false, lists:member({div_, 3}, Exports)),
+    ?assertEqual(false, lists:member({rem_, 3}, Exports)).
+
+minimal_runtime_rejects_missing_primitive_test() ->
+    State = jit_riscv32e:new(
+        ?MINIMAL_VARIANT, jit_stream_binary, jit_stream_binary:new(0)
+    ),
+    ?assertError(
+        {unsupported_minimal_runtime_primitive, 17},
+        jit_riscv32e:call_primitive(State, 17, [ctx, jit_state])
+    ).
+
+minimal_runtime_rejects_missing_bif_test() ->
+    State = jit_riscv32e:new(
+        ?MINIMAL_VARIANT, jit_stream_binary, jit_stream_binary:new(0)
+    ),
+    ?assertError(
+        {unsupported_minimal_runtime_bif, {erlang, self, 0}},
+        jit_riscv32e:validate_bif(State, {erlang, self, 0})
+    ).
+
+minimal_runtime_rejects_dynamic_apply_test() ->
+    State = jit_riscv32e:new(
+        ?MINIMAL_VARIANT, jit_stream_binary, jit_stream_binary:new(0)
+    ),
+    ?assertError(
+        {unsupported_minimal_runtime_external_call, {erlang, apply, 3}},
+        jit_riscv32e:validate_external_call(State, {erlang, apply, 3})
+    ).
+
+regular_rv32e_keeps_complete_native_interface_test() ->
+    State = jit_riscv32e:new(?VARIANT, jit_stream_binary, jit_stream_binary:new(0)),
+    {_, _} = jit_riscv32e:call_primitive(State, 17, [ctx, jit_state]),
+    ok = jit_riscv32e:validate_bif(State, {erlang, self, 0}),
+    ok = jit_riscv32e:validate_external_call(State, {erlang, apply, 3}).
 
 call_primitive_test() ->
     State0 = jit_riscv32e:new(?VARIANT, jit_stream_binary, jit_stream_binary:new(0)),

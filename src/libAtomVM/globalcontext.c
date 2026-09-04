@@ -794,6 +794,10 @@ Module *globalcontext_get_module_by_index(GlobalContext *global, int index)
 run_result_t globalcontext_run(GlobalContext *glb, Module *startup_module, FILE *out_f, int argc, char **argv)
 {
     Context *ctx = context_new(glb);
+    if (IS_NULL_PTR(ctx)) {
+        fprintf(stderr, "Unable to allocate initial process.\n");
+        return RUN_MEMORY_FAILURE;
+    }
     ctx->leader = 1;
 #ifdef AVM_MINIMAL_RUNTIME
     Module *init_module = NULL;
@@ -803,6 +807,7 @@ run_result_t globalcontext_run(GlobalContext *glb, Module *startup_module, FILE 
     if (IS_NULL_PTR(init_module)) {
         if (IS_NULL_PTR(startup_module)) {
             fprintf(stderr, "Unable to locate entrypoint.\n");
+            context_destroy(ctx);
             return RUN_NO_ENTRY_POINT;
         }
         context_execute_loop(ctx, startup_module, "start", 0);
@@ -823,6 +828,7 @@ run_result_t globalcontext_run(GlobalContext *glb, Module *startup_module, FILE 
 
             if (UNLIKELY(memory_ensure_free(ctx, heap_needed) != MEMORY_GC_OK)) {
                 fprintf(stderr, "Unable to allocate arguments.\n");
+                context_destroy(ctx);
                 return RUN_MEMORY_FAILURE;
             }
 
@@ -845,6 +851,7 @@ run_result_t globalcontext_run(GlobalContext *glb, Module *startup_module, FILE 
             // Non-embedded mode: ["-s", startup_module]
             if (UNLIKELY(memory_ensure_free(ctx, term_binary_heap_size(2) + LIST_SIZE(2, 0)) != MEMORY_GC_OK)) {
                 fprintf(stderr, "Unable to allocate arguments.\n");
+                context_destroy(ctx);
                 return RUN_MEMORY_FAILURE;
             }
             term s_opt = term_from_literal_binary("-s", strlen("-s"), &ctx->heap, glb);

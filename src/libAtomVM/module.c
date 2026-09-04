@@ -1193,6 +1193,9 @@ Module *module_new_from_iff_binary(GlobalContext *global, const void *iff_binary
 #ifdef __riscv_abi_rve
                 runtime_variant |= JIT_VARIANT_RV32E;
 #endif
+#ifdef AVM_NATIVE_INTERFACE_MINIMAL
+                runtime_variant |= JIT_VARIANT_MINIMAL;
+#endif
                 if (ENDIAN_SWAP_16(native_code->architectures[arch_index].architecture) == JIT_ARCH_TARGET && ENDIAN_SWAP_16(native_code->architectures[arch_index].variant) == runtime_variant) {
                     size_t arch_offset = ENDIAN_SWAP_32(native_code->architectures[arch_index].offset);
                     size_t arch_code_size;

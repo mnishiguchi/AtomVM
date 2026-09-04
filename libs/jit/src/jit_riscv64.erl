@@ -309,6 +309,9 @@
 -spec word_size() -> 4 | 8.
 word_size() -> 8.
 
+validate_primitive(_State, _Primitive) ->
+    ok.
+
 prepare_call_args(Args) ->
     Args.
 

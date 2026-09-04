@@ -288,6 +288,7 @@ call_primitive(
     Primitive,
     Args
 ) ->
+    ok = validate_primitive(State, Primitive),
     Available = jit_regs:available_regs(Regs0),
     case Available of
         0 ->
@@ -318,6 +319,7 @@ call_primitive(
 %% @return Updated backend state
 %%-----------------------------------------------------------------------------
 call_primitive_last(State0, Primitive, Args) ->
+    ok = validate_primitive(State0, Primitive),
     PreparedArgs = prepare_call_args(Args),
     case length(PreparedArgs) =< length(?PARAMETER_REGS) of
         true ->

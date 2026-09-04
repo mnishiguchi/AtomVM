@@ -37,5 +37,6 @@
 -define(JIT_VARIANT_FLOAT32, 2).
 -define(JIT_VARIANT_THUMB2, 4).
 -define(JIT_VARIANT_RV32E, 4).
+-define(JIT_VARIANT_MINIMAL, 8).
 
 -define(MAX_REG, 16).

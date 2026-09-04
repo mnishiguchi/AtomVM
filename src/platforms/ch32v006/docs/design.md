@@ -178,7 +178,8 @@ The port is qualified at several layers:
 - generated ILP32E ABI canary code;
 - flash-size and ELF ABI checks;
 - a language/runtime acceptance image;
-- a reduced-heap language image and a controlled initial-process OOM image;
+- a reduced-heap language image, controlled initial-process allocation failure,
+  and catchable process-heap exhaustion;
 - a GPIO acceptance image;
 - a normal blink image;
 - generic Unix build checks; and

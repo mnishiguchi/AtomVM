@@ -87,7 +87,7 @@ ifeq ($(ALLOW_SWIO_PIN),1)
 EXTRA_CFLAGS += -DAVM_CH32V006_ALLOW_SWIO_PIN
 endif
 
-ifneq ($(filter ch32v006_self_test ch32v006_gpio_self_test ch32v006_oom_self_test,$(START_NAME)),)
+ifneq ($(filter ch32v006_self_test ch32v006_gpio_self_test ch32v006_heap_oom_self_test ch32v006_oom_self_test,$(START_NAME)),)
 EXTRA_CFLAGS += -DAVM_CH32V006_SELF_TEST
 endif
 
@@ -178,6 +178,8 @@ acceptance-images:
 	    IMAGE_BASENAME=AtomVM-$(BOARD)-gpio-self-test image
 	$(MAKE) START_SOURCE=$(CURDIR)/ch32v006_oom_self_test.erl \
 	    IMAGE_BASENAME=AtomVM-$(BOARD)-oom-self-test image
+	$(MAKE) START_SOURCE=$(CURDIR)/ch32v006_heap_oom_self_test.erl \
+	    IMAGE_BASENAME=AtomVM-$(BOARD)-heap-oom-self-test image
 	$(MAKE) START_SOURCE=$(CURDIR)/ch32v006_minimal.erl \
 	    IMAGE_BASENAME=AtomVM-$(BOARD) image
 

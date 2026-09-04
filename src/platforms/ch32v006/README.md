@@ -46,8 +46,8 @@ The startup module must export `start/0`. CH32V006 has no separate AtomVM and
 application partitions: every BIN contains the runtime and one application,
 so changing the application rebuilds and reflashes the complete firmware.
 
-Build the normal, language, reduced-heap, controlled-OOM, and GPIO acceptance
-images with:
+Build the normal, language, reduced-heap, controlled initial-allocation OOM,
+process-heap OOM, and GPIO acceptance images with:
 
 ```sh
 make CH32FUN=/path/to/ch32fun/ch32fun acceptance-images

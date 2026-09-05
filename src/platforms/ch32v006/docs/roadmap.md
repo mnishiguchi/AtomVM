@@ -62,6 +62,14 @@ The I2C image is currently the tightest peripheral image after its argument
 guards were added.
 The GPIO IRQ image is now tighter still after adding its pin and edge guards.
 
+Hardware baseline recorded on 2026-09-05 with a UIAPduino Pro Micro CH32V006
+and the language self-test image (`60,372` bytes): SysTick and RV32E ABI checks
+passed, the AtomVM self-test passed, and the image finished with `ok`. The
+runtime reported `4,480/6,328` bytes of heap in use (peak `4,656`) and a C-stack
+peak of `1,220/1,432` bytes, leaving `212` bytes of measured stack margin.
+Keep the stack canary enabled and treat this margin as a constraint for larger
+applications.
+
 ## Near-term work
 
 1. Hardware-qualify concurrency, spawn allocation failure, and timers,

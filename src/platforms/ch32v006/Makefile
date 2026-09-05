@@ -173,9 +173,9 @@ endif
 EXTRA_ELF_DEPENDENCIES := $(EMBEDDED_BEAM) $(ABI_CANARY_BIN)
 
 JIT_ERLANG_SOURCES := \
-    ch32v006_abi_canary_gen.erl \
-    ch32v006_negative_tests.erl \
-    ch32v006_validate.erl \
+    tools/ch32v006_abi_canary_gen.erl \
+    tools/ch32v006_negative_tests.erl \
+    tools/ch32v006_validate.erl \
     $(ATOMVM_ROOT)/libs/jit/src/jit_regs.erl \
     $(ATOMVM_ROOT)/libs/jit/src/jit_stream_binary.erl \
     $(ATOMVM_ROOT)/libs/jit/src/jit_riscv32_asm.erl \
@@ -253,16 +253,16 @@ release-image: verify-image
 	cd $(RELEASE_DIR) && sha256sum $(RELEASE_BASENAME).bin > $(RELEASE_BASENAME).bin.sha256
 
 acceptance-images:
-	$(MAKE) START_SOURCE=$(CURDIR)/ch32v006_self_test.erl \
+	$(MAKE) START_SOURCE=$(CURDIR)/tests/ch32v006_self_test.erl \
 	    IMAGE_BASENAME=AtomVM-$(BOARD)-language-self-test image
-	$(MAKE) -B START_SOURCE=$(CURDIR)/ch32v006_self_test.erl \
+	$(MAKE) -B START_SOURCE=$(CURDIR)/tests/ch32v006_self_test.erl \
 	    C_STACK_RESERVE_BYTES=$(MEMORY_PRESSURE_STACK_RESERVE_BYTES) \
 	    IMAGE_BASENAME=AtomVM-$(BOARD)-memory-pressure-self-test image
-	$(MAKE) START_SOURCE=$(CURDIR)/ch32v006_gpio_self_test.erl \
+	$(MAKE) START_SOURCE=$(CURDIR)/tests/ch32v006_gpio_self_test.erl \
 	    IMAGE_BASENAME=AtomVM-$(BOARD)-gpio-self-test image
-	$(MAKE) START_SOURCE=$(CURDIR)/ch32v006_oom_self_test.erl \
+	$(MAKE) START_SOURCE=$(CURDIR)/tests/ch32v006_oom_self_test.erl \
 	    IMAGE_BASENAME=AtomVM-$(BOARD)-oom-self-test image
-	$(MAKE) START_SOURCE=$(CURDIR)/ch32v006_heap_oom_self_test.erl \
+	$(MAKE) START_SOURCE=$(CURDIR)/tests/ch32v006_heap_oom_self_test.erl \
 	    IMAGE_BASENAME=AtomVM-$(BOARD)-heap-oom-self-test image
 	$(MAKE) START_SOURCE=$(CURDIR)/ch32v006_minimal.erl \
 	    IMAGE_BASENAME=AtomVM-$(BOARD) image
@@ -325,7 +325,7 @@ peripheral-images:
 	    IMAGE_BASENAME=AtomVM-$(BOARD)-pwm-self-test image
 
 validation-tests: $(HOST_JIT_DIR)/.stamp
-	erlc -I $(ATOMVM_ROOT)/libs/jit/include -o $(HOST_JIT_DIR) ch32v006_validate_tests.erl
+	erlc -I $(ATOMVM_ROOT)/libs/jit/include -o $(HOST_JIT_DIR) tools/ch32v006_validate_tests.erl
 	erl -pa $(HOST_JIT_DIR) -noshell \
 	    -eval 'ok = ch32v006_validate_tests:run(), halt().'
 	mkdir -p $(BUILD_DIR)/unsupported

@@ -81,6 +81,7 @@ must report `error:out_of_memory` without crossing the stack guard. Their
 Erlang acceptance sources live under
 `tests/`. See the
 [roadmap](docs/roadmap.md) for status and measured image sizes.
+Host-side AOT validators and negative-test helpers live under `tools/`.
 
 `concurrency-memory-image` uses the 2,048-byte C-stack reserve used by the
 default memory-pressure acceptance image, leaving less SRAM for process heaps.

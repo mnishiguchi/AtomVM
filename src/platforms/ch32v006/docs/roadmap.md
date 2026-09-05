@@ -62,6 +62,12 @@ The I2C image is currently the tightest peripheral image after its argument
 guards were added.
 The GPIO IRQ image is now tighter still after adding its pin and edge guards.
 
+The full host-side acceptance and peripheral image matrices were rebuilt on
+2026-09-05 after the embedded-safe allocation diagnostic fix. All generated
+images passed AOT, RV32E ABI, native-instruction, flash-size, and headroom
+checks. This validates the artifacts; it does not replace board-level
+electrical tests.
+
 Hardware baseline recorded on 2026-09-05 with a UIAPduino Pro Micro CH32V006
 and the language self-test image (`60,372` bytes): SysTick and RV32E ABI checks
 passed, the AtomVM self-test passed, and the image finished with `ok`. The
@@ -120,17 +126,16 @@ four free, and a C-stack peak of `652/1,432` bytes.
 
 ## Near-term work
 
-1. Hardware-qualify concurrency, spawn allocation failure, and timers,
-   including allocator and stack measurements. Keep the maximum at two
-   processes until evidence supports more.
-2. Hardware-qualify each driver independently, starting with UART loopback and
-   known-voltage ADC, then I2C/SPI devices, PWM, and GPIO edges.
-3. Run the binary-allocation OOM image on the board and record the allocator
-   and C-stack readings. Keep sub-binaries, UTF segments, floats, and arbitrary
-   binary copying as AOT errors.
-4. Use the first real peripheral application to decide which runtime and driver
-   combination deserves optimization. Do not enable all experiments by default.
-5. Attempt a small combined application only after its required tiers fit with
+1. Repeat the two-process and timer experiments with allocation-failure
+   injection, keeping the two-process limit and stack canary.
+2. Run electrical tests when the required fixtures are available: UART1
+   PD5↔PD6 loopback, known-voltage ADC, I2C/SPI devices, PWM measurement, and
+   GPIO edges. The UART image currently remains build-qualified because no
+   loopback jumper is available.
+3. Use the first real peripheral application to decide which runtime and
+   driver combination deserves optimization. Do not enable all experiments by
+   default.
+4. Attempt a small combined application only after its required tiers fit with
    credible flash, heap, and C-stack margins.
 
 ## Later investigations

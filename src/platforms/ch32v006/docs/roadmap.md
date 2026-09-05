@@ -41,7 +41,7 @@ Representative self-test image sizes measured on 2026-09-05:
 
 | Image | Bytes | Flash remaining |
 | --- | ---: | ---: |
-| ADC | 57,244 | 6,244 |
+| ADC | 59,048 | 4,440 |
 | UART | 60,372 | 3,116 |
 | SPI | 59,844 | 3,644 |
 | PWM | 57,844 | 5,644 |

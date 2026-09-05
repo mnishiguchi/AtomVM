@@ -26,7 +26,7 @@ If a capability cannot meet those gates, it remains optional or unsupported.
 | receive timeouts | build-qualified experiment | hardware timing and long-run test |
 | timer memory pressure | hardware-qualified experiment | preserve timer behavior and the 2,048-byte stack reserve |
 | byte-integer binary construction/exact matching | build-qualified experiment | hardware construction/matching test |
-| binary allocation failure | build-qualified experiment | run the binary-OOM image on hardware and confirm stack guard/headroom |
+| binary allocation failure | hardware-qualified experiment | preserve controlled failure and stack guard |
 | GPIO edge polling | build-qualified driver | physical rising/falling-edge tests |
 | UART1 | build-qualified driver | physical PD5/PD6 loopback and timeout test |
 | ADC | hardware smoke-tested driver | known-voltage measurements on PA2/A0 |
@@ -101,6 +101,11 @@ guards and TIM1/PC3 path completing with `ok`. It reported `4,096/6,320` bytes
 of heap in use (peak `4,096`), `8` process-heap words with seven free, and a
 C-stack peak of `660/1,432` bytes. Electrical frequency and duty-cycle
 measurement remains outstanding.
+
+The binary-allocation-failure image (`60,220` bytes) passed on hardware with
+the expected allocation diagnostic, the AtomVM self-test passing, and a final
+`ok`. It reported `4,120/6,320` bytes of heap in use (peak `4,120`), `8`
+process-heap words with no free words, and a C-stack peak of `656/1,432` bytes.
 
 ## Near-term work
 

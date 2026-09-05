@@ -37,19 +37,19 @@ Representative self-test image sizes measured on 2026-09-04:
 
 | Image | Bytes | Flash remaining |
 | --- | ---: | ---: |
-| ADC | 58,196 | 5,292 |
-| UART | 58,920 | 4,568 |
-| SPI | 59,068 | 4,420 |
-| PWM | 59,248 | 4,240 |
-| I2C | 60,720 | 2,768 |
-| GPIO IRQ | 60,848 | 2,640 |
-| byte binaries | 60,984 | 2,504 |
-| concurrency | 62,652 | 836 |
-| receive timeouts | 63,280 | 208 |
+| ADC | 57,200 | 6,288 |
+| UART | 57,808 | 5,680 |
+| SPI | 59,808 | 3,680 |
+| PWM | 57,844 | 5,644 |
+| I2C | 59,664 | 3,824 |
+| GPIO IRQ | 59,712 | 3,776 |
+| byte binaries | 59,856 | 3,632 |
+| concurrency | 61,524 | 1,964 |
+| receive timeouts | 60,964 | 2,524 |
 
 These numbers include one acceptance application and will change with code or
-toolchain revisions. The timer image's 208-byte margin makes it especially
-sensitive to growth.
+toolchain revisions. The timer image has a healthier margin now, but remains
+sensitive to growth because concurrency and timers add substantial runtime code.
 
 ## Near-term work
 

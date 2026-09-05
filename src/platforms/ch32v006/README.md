@@ -155,11 +155,13 @@ The experimental calls are:
 - `uart:init/1`, `uart:write/1`, and nonblocking `uart:read/0`
 - `adc:read/1` for channels 0 through 7
 - `i2c:init/1`, `i2c:probe/1`, `i2c:write/2`, and `i2c:read/2`
-- `spi:init/2`, `spi:transfer_byte/1`, and `spi:transfer/1`
+- `spi:init/2`, `spi:transfer_byte/1`, and `spi:transfer/1`; SPI clocks must be
+  between 187,500 and 24,000,000 Hz at the default 48 MHz system clock
 - `pwm:init/1` and `pwm:set_duty/2`, where duty is 0 through 1000
 
 The I2C, SPI, and UART byte APIs accept at most 64 bytes per call. Driver calls
-are synchronous and block the single scheduler thread while accessing hardware.
+are synchronous and block the single scheduler thread while accessing hardware;
+peripheral polling fails after a 10 ms elapsed-time deadline.
 Select one or more drivers with `PERIPHERALS="uart adc"`. Select byte binary
 construction/matching with `BINARIES=1`; timers require `CONCURRENCY=1
 TIMERS=1`. The binary and concurrency experiments cannot yet be combined.

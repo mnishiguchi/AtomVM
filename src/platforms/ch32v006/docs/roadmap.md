@@ -9,7 +9,7 @@ or silently consume the board's 63,488-byte flash and 8 KiB SRAM budgets.
 A capability moves to the stable tier only after it has:
 
 1. deterministic AOT rejection for unsupported operations;
-2. host, RV32E ABI, native-instruction, and flash-size checks;
+2. host, RV32E ABI, native-instruction, flash-size, and headroom checks;
 3. a focused physical-board acceptance test; and
 4. measured heap and C-stack headroom under memory pressure.
 

@@ -30,7 +30,9 @@ make CH32FUN=/path/to/ch32fun/ch32fun clean image
 
 The flashable file is
 `build/images/AtomVM-uiapduino-pro-micro-ch32v006.bin`. The image target also
-checks the flash limit and RV32E ELF ABI and produces a checksum, HEX, and ELF.
+checks the flash limit, reserves at least 1,024 bytes of flash headroom by
+default, and validates the RV32E ELF ABI. It produces a checksum, HEX, and ELF.
+Override the margin only for an explicit experiment with `MIN_FLASH_HEADROOM`.
 
 Embed a different Erlang source or an already compiled Elixir/Erlang BEAM:
 

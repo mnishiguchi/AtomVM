@@ -10,6 +10,7 @@ TARGET := atomvm_ch32v006
 TARGET_MCU := CH32V006
 BOARD := uiapduino-pro-micro-ch32v006
 FLASH_LIMIT := 63488
+MIN_FLASH_HEADROOM ?= 1024
 C_STACK_RESERVE_BYTES ?= 1432
 MEMORY_PRESSURE_STACK_RESERVE_BYTES ?= 2048
 ALLOW_SWIO_PIN ?= 0
@@ -230,11 +231,12 @@ build: $(TARGET).bin
 
 verify-image: build
 	@flash_bytes=$$(wc -c < $(TARGET).bin); \
-	if [ "$$flash_bytes" -gt "$(FLASH_LIMIT)" ]; then \
-	    echo "Image exceeds CH32V006 flash: $$flash_bytes / $(FLASH_LIMIT) bytes"; \
+	flash_budget=$$(( $(FLASH_LIMIT) - $(MIN_FLASH_HEADROOM) )); \
+	if [ "$$flash_bytes" -gt "$$flash_budget" ]; then \
+	    echo "Image leaves less than $(MIN_FLASH_HEADROOM) bytes headroom: $$flash_bytes / $(FLASH_LIMIT) bytes"; \
 	    exit 1; \
 	fi; \
-	echo "Verified $(TARGET).bin: $$flash_bytes / $(FLASH_LIMIT) bytes"
+	echo "Verified $(TARGET).bin: $$flash_bytes / $(FLASH_LIMIT) bytes ($$(( $(FLASH_LIMIT) - flash_bytes )) bytes free)"
 	@riscv64-unknown-elf-readelf -h $(TARGET).elf | grep -Fq 'RISC-V'
 	@riscv64-unknown-elf-readelf -h $(TARGET).elf | grep -Fq 'RVE'
 
@@ -362,6 +364,6 @@ help:
 	@echo "  validation-tests   Check the CH32V006 native-code validator"
 	@echo "  flash-uiap         Flash the current image through the UIAP programmer"
 	@echo "  monitor-uiap       Open the UIAP SWIO terminal"
-	@echo "Variables: CH32FUN, MINICHLINK, START_SOURCE, START_BEAM_INPUT, FLASH_IMAGE, ATOMVM_VERSION, C_STACK_RESERVE_BYTES, MEMORY_PRESSURE_STACK_RESERVE_BYTES, ALLOW_SWIO_PIN, CONCURRENCY, TIMERS, BINARIES, MAX_PROCESSES, PERIPHERALS"
+	@echo "Variables: CH32FUN, MINICHLINK, START_SOURCE, START_BEAM_INPUT, FLASH_IMAGE, ATOMVM_VERSION, C_STACK_RESERVE_BYTES, MEMORY_PRESSURE_STACK_RESERVE_BYTES, MIN_FLASH_HEADROOM, ALLOW_SWIO_PIN, CONCURRENCY, TIMERS, BINARIES, MAX_PROCESSES, PERIPHERALS"
 
 include $(CH32FUN)/ch32fun.mk

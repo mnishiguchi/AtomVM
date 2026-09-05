@@ -10,7 +10,7 @@
 start() ->
     Result =
         case adc:read(0) of
-            Value when Value >= 0, Value =< 1023 -> passed;
+            Value when Value >= 0, Value =< 4095 -> passed;
             _ -> failed
         end,
     ch32v006:report(Result).

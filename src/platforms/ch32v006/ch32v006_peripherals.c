@@ -181,18 +181,36 @@ static const uint8_t adc_pins[8] = {
 
 static bool adc_initialized;
 
-static void adc_init(void)
+static bool adc_init(void)
 {
     RCC->CFGR0 = (RCC->CFGR0 & ~(RCC_ADCPRE | RCC_CFGR0_ADC_CLK_MODE | RCC_CFGR0_ADC_CLK_ADJ))
         | RCC_ADCPRE_DIV2;
     RCC->PB2PCENR |= RCC_ADCEN | RCC_IOPAEN | RCC_IOPCEN | RCC_IOPDEN;
     RCC->PB2PRSTR |= RCC_ADC1RST;
     RCC->PB2PRSTR &= ~RCC_ADC1RST;
-    ADC1->CTLR2 |= ADC_ADON;
+    ADC1->CTLR1 = 0;
+    ADC1->CTLR2 = 0;
     ADC1->RSQR1 = 0;
     ADC1->RSQR2 = 0;
-    ADC1->CTLR2 &= ~ADC_EXTSEL_SWSTART;
-    adc_initialized = true;
+
+    // Power up first, then allow the ADC's 1 us stabilization interval.
+    ADC1->CTLR2 |= ADC_ADON;
+    Delay_Us(1);
+
+    // Select and enable the software trigger for the regular conversion group.
+    ADC1->CTLR2 |= ADC_EXTSEL_SWSTART | ADC_EXTTRIG;
+
+    // Follow the CH32V00x startup sequence and calibrate once after power-up.
+    ADC1->CTLR2 |= ADC_RSTCAL;
+    if (!wait_register_clear32(&ADC1->CTLR2, ADC_RSTCAL)) {
+        return false;
+    }
+    ADC1->CTLR2 |= ADC_CAL;
+    if (!wait_register_clear32(&ADC1->CTLR2, ADC_CAL)) {
+        return false;
+    }
+
+    return true;
 }
 
 static term nif_adc_read(Context *ctx, int argc, term argv[])
@@ -206,14 +224,17 @@ static term nif_adc_read(Context *ctx, int argc, term argv[])
         return term_invalid_term();
     }
     if (!adc_initialized) {
-        adc_init();
+        if (!adc_init()) {
+            return ERROR_ATOM;
+        }
+        adc_initialized = true;
     }
 
     funPinMode(adc_pins[channel], GPIO_CFGLR_IN_ANALOG);
     ADC1->RSQR3 = (uint32_t) channel;
     ADC1->SAMPTR2 &= ~(ADC_SMP0 << (3U * (uint32_t) channel));
     ADC1->SAMPTR2 |= 7U << (3U * (uint32_t) channel);
-    ADC1->CTLR2 |= ADC_FLAG_STRT;
+    ADC1->CTLR2 |= ADC_SWSTART;
 
     if (!wait_register_set32(&ADC1->STATR, ADC_EOC)) {
         return ERROR_ATOM;

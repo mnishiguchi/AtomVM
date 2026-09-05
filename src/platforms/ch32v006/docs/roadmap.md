@@ -24,6 +24,7 @@ If a capability cannot meet those gates, it remains optional or unsupported.
 | two-process memory pressure | build-qualified experiment | hardware run with the 2,048-byte C-stack reserve |
 | spawn allocation failure | build-qualified experiment | hardware run with stack guard and heap readings |
 | receive timeouts | build-qualified experiment | hardware timing and long-run test |
+| timer memory pressure | build-qualified experiment | hardware run with the 2,048-byte C-stack reserve |
 | byte-integer binary construction/exact matching | build-qualified experiment | hardware construction/matching test |
 | binary allocation failure | build-qualified experiment | run the binary-OOM image on hardware and confirm stack guard/headroom |
 | GPIO edge polling | build-qualified driver | physical rising/falling-edge tests |
@@ -51,6 +52,7 @@ Representative self-test image sizes measured on 2026-09-05:
 | concurrency memory pressure | 61,580 | 1,908 |
 | concurrency allocation OOM | 58,556 | 4,932 |
 | receive timeouts | 61,012 | 2,476 |
+| timer memory pressure | 61,012 | 2,476 |
 | binary allocation OOM | 60,220 | 3,268 |
 
 These numbers include one acceptance application and will change with code or

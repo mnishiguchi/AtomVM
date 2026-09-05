@@ -63,6 +63,7 @@ make CH32FUN=/path/to/ch32fun/ch32fun concurrency-image
 make CH32FUN=/path/to/ch32fun/ch32fun concurrency-memory-image
 make CH32FUN=/path/to/ch32fun/ch32fun concurrency-oom-image
 make CH32FUN=/path/to/ch32fun/ch32fun timer-image
+make CH32FUN=/path/to/ch32fun/ch32fun timer-memory-image
 make CH32FUN=/path/to/ch32fun/ch32fun binary-image
 make CH32FUN=/path/to/ch32fun/ch32fun binary-oom-image
 make CH32FUN=/path/to/ch32fun/ch32fun peripheral-images
@@ -81,6 +82,7 @@ Erlang acceptance sources live under
 
 `concurrency-memory-image` uses the 2,048-byte C-stack reserve used by the
 default memory-pressure acceptance image, leaving less SRAM for process heaps.
+`timer-memory-image` applies the same reserve to the timer tier.
 
 ## Flash and monitor
 

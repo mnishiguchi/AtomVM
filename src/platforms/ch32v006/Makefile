@@ -223,7 +223,7 @@ endif
 $(EMBEDDED_BEAM): $(PRECOMPILED_BEAM) FORCE
 	cp $< $@
 
-.PHONY: build image verify-image release-image acceptance-images concurrency-image concurrency-memory-image concurrency-oom-image timer-image binary-image binary-oom-image peripheral-images validation-tests flash-uiap monitor-uiap clean help FORCE
+.PHONY: build image verify-image release-image acceptance-images concurrency-image concurrency-memory-image concurrency-oom-image timer-image timer-memory-image binary-image binary-oom-image peripheral-images validation-tests flash-uiap monitor-uiap clean help FORCE
 FORCE:
 
 build: $(TARGET).bin
@@ -285,6 +285,12 @@ timer-image:
 	$(MAKE) -B CONCURRENCY=1 TIMERS=1 \
 	    START_SOURCE=$(CURDIR)/tests/ch32v006_timer_self_test.erl \
 	    IMAGE_BASENAME=AtomVM-$(BOARD)-timer-self-test image
+
+timer-memory-image:
+	$(MAKE) -B CONCURRENCY=1 TIMERS=1 \
+	    C_STACK_RESERVE_BYTES=$(MEMORY_PRESSURE_STACK_RESERVE_BYTES) \
+	    START_SOURCE=$(CURDIR)/tests/ch32v006_timer_self_test.erl \
+	    IMAGE_BASENAME=AtomVM-$(BOARD)-timer-memory-pressure-self-test image
 
 binary-image:
 	$(MAKE) -B BINARIES=1 \
@@ -349,6 +355,7 @@ help:
 	@echo "  concurrency-memory-image  Build the two-process memory-pressure image"
 	@echo "  concurrency-oom-image  Build the spawn allocation-failure image"
 	@echo "  timer-image        Build the experimental receive-timeout acceptance image"
+	@echo "  timer-memory-image  Build the timer memory-pressure image"
 	@echo "  binary-image       Build the experimental byte-binary acceptance image"
 	@echo "  binary-oom-image   Build the binary-allocation failure acceptance image"
 	@echo "  peripheral-images  Build each experimental peripheral image independently"

@@ -25,7 +25,7 @@ If a capability cannot meet those gates, it remains optional or unsupported.
 | spawn allocation failure | hardware-qualified experiment | preserve controlled `system_limit` behavior and stack guard |
 | receive timeouts | build-qualified experiment | hardware timing and long-run test |
 | timer memory pressure | hardware-qualified experiment | preserve timer behavior and the 2,048-byte stack reserve |
-| byte-integer binary construction/exact matching | build-qualified experiment | hardware construction/matching test |
+| byte-integer binary construction/exact matching | hardware-qualified experiment | preserve the deliberately narrow binary subset |
 | binary allocation failure | hardware-qualified experiment | preserve controlled failure and stack guard |
 | GPIO edge polling | build-qualified driver | physical rising/falling-edge tests |
 | UART1 | build-qualified driver | physical PD5/PD6 loopback and timeout test |
@@ -106,6 +106,12 @@ The binary-allocation-failure image (`60,220` bytes) passed on hardware with
 the expected allocation diagnostic, the AtomVM self-test passing, and a final
 `ok`. It reported `4,120/6,320` bytes of heap in use (peak `4,120`), `8`
 process-heap words with no free words, and a C-stack peak of `656/1,432` bytes.
+
+The byte-binary construction/matching image (`59,896` bytes) passed on hardware
+with the exact-match workload and self-test completing with `ok`. It reported
+`4,048/6,328` bytes of heap in use (peak `4,048`), `20` process-heap words with
+seven free, and a C-stack peak of `672/1,432` bytes. Sub-binaries, UTF
+segments, floats, and arbitrary binary copying remain unsupported.
 
 ## Near-term work
 

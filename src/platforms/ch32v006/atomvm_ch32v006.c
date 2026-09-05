@@ -23,7 +23,7 @@ bool platform_stack_guard_ok(void);
 bool ch32v006_run_abi_canary(void);
 void platform_stack_probe_start(void);
 #endif
-#ifdef AVM_CH32V006_OOM_SELF_TEST
+#ifdef AVM_CH32V006_ALLOCATOR_FAULT_INJECTION
 void platform_allocator_fail_next(void);
 #endif
 

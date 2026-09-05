@@ -43,7 +43,7 @@ extern uint8_t _eusrstack;
 
 static HeapBlock *heap_head;
 static bool stack_guard_initialized;
-#if defined(AVM_CH32V006_OOM_SELF_TEST) || defined(AVM_CH32V006_BINARY_OOM_SELF_TEST)
+#ifdef AVM_CH32V006_ALLOCATOR_FAULT_INJECTION
 static bool fail_next_allocation;
 #endif
 #ifdef AVM_CH32V006_SELF_TEST
@@ -124,7 +124,7 @@ static void heap_init(void)
 void *malloc(size_t size)
 {
     platform_stack_guard_check();
-#if defined(AVM_CH32V006_OOM_SELF_TEST) || defined(AVM_CH32V006_BINARY_OOM_SELF_TEST)
+#ifdef AVM_CH32V006_ALLOCATOR_FAULT_INJECTION
     if (fail_next_allocation) {
         fail_next_allocation = false;
         return NULL;
@@ -172,7 +172,7 @@ void *malloc(size_t size)
     return NULL;
 }
 
-#if defined(AVM_CH32V006_OOM_SELF_TEST) || defined(AVM_CH32V006_BINARY_OOM_SELF_TEST)
+#ifdef AVM_CH32V006_ALLOCATOR_FAULT_INJECTION
 void platform_allocator_fail_next(void)
 {
     fail_next_allocation = true;

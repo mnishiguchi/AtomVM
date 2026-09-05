@@ -60,6 +60,7 @@ features are selected at build time and are not implied by a default build:
 
 ```sh
 make CH32FUN=/path/to/ch32fun/ch32fun concurrency-image
+make CH32FUN=/path/to/ch32fun/ch32fun concurrency-oom-image
 make CH32FUN=/path/to/ch32fun/ch32fun timer-image
 make CH32FUN=/path/to/ch32fun/ch32fun binary-image
 make CH32FUN=/path/to/ch32fun/ch32fun binary-oom-image
@@ -68,8 +69,11 @@ make CH32FUN=/path/to/ch32fun/ch32fun peripheral-images
 
 These targets pass AOT, native-instruction, RV32E ABI, and flash-size checks.
 They still require physical-board qualification before promotion to the stable
-tier. `binary-oom-image` arms a test-only allocator fault immediately before a
-64-byte ref-counted binary allocation and must report `error:out_of_memory`
+tier. `concurrency-oom-image` arms a test-only allocator fault immediately
+before `spawn/3` and expects a catchable `error:out_of_memory` when
+`context_new()` cannot allocate the child. `binary-oom-image` arms a test-only
+allocator fault immediately before a 64-byte ref-counted binary allocation and
+must report `error:out_of_memory`
 without crossing the stack guard. Their Erlang acceptance sources live under
 `tests/`. See the
 [roadmap](docs/roadmap.md) for status and measured image sizes.

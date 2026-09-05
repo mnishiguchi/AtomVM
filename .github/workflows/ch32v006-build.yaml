@@ -80,6 +80,7 @@ jobs:
           make CH32FUN="$CH32FUN_ROOT/ch32fun" validation-tests
           make CH32FUN="$CH32FUN_ROOT/ch32fun" acceptance-images
           make CH32FUN="$CH32FUN_ROOT/ch32fun" concurrency-image
+          make CH32FUN="$CH32FUN_ROOT/ch32fun" concurrency-oom-image
           make CH32FUN="$CH32FUN_ROOT/ch32fun" timer-image
           make CH32FUN="$CH32FUN_ROOT/ch32fun" binary-image
           make CH32FUN="$CH32FUN_ROOT/ch32fun" binary-oom-image

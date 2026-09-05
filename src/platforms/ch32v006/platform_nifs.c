@@ -44,7 +44,7 @@ void platform_heap_stats(size_t *capacity, size_t *current, size_t *peak);
 size_t platform_stack_peak(void);
 size_t platform_stack_reserve(void);
 #endif
-#ifdef AVM_CH32V006_BINARY_OOM_SELF_TEST
+#if defined(AVM_CH32V006_BINARY_OOM_SELF_TEST) || defined(AVM_CH32V006_CONCURRENCY_OOM_SELF_TEST)
 void platform_allocator_fail_next(void);
 #endif
 
@@ -330,7 +330,7 @@ static term nif_report(Context *ctx, int argc, term argv[])
 }
 #endif
 
-#ifdef AVM_CH32V006_BINARY_OOM_SELF_TEST
+#if defined(AVM_CH32V006_BINARY_OOM_SELF_TEST) || defined(AVM_CH32V006_CONCURRENCY_OOM_SELF_TEST)
 static term nif_fail_next_allocation(Context *ctx, int argc, term argv[])
 {
     UNUSED(ctx);
@@ -341,7 +341,9 @@ static term nif_fail_next_allocation(Context *ctx, int argc, term argv[])
     platform_allocator_fail_next();
     return OK_ATOM;
 }
+#endif
 
+#ifdef AVM_CH32V006_BINARY_OOM_SELF_TEST
 static term nif_binary_allocation_probe(Context *ctx, int argc, term argv[])
 {
     UNUSED(argv);
@@ -388,8 +390,10 @@ DEFINE_NIF(spawn);
 #ifdef AVM_CH32V006_SELF_TEST
 DEFINE_NIF(report);
 #endif
-#ifdef AVM_CH32V006_BINARY_OOM_SELF_TEST
+#if defined(AVM_CH32V006_BINARY_OOM_SELF_TEST) || defined(AVM_CH32V006_CONCURRENCY_OOM_SELF_TEST)
 DEFINE_NIF(fail_next_allocation);
+#endif
+#ifdef AVM_CH32V006_BINARY_OOM_SELF_TEST
 DEFINE_NIF(binary_allocation_probe);
 #endif
 
@@ -429,10 +433,12 @@ const struct Nif *platform_nifs_get_nif(const char *nifname)
         return &report_nif;
     }
 #endif
-#ifdef AVM_CH32V006_BINARY_OOM_SELF_TEST
+#if defined(AVM_CH32V006_BINARY_OOM_SELF_TEST) || defined(AVM_CH32V006_CONCURRENCY_OOM_SELF_TEST)
     if (strcmp("ch32v006:fail_next_allocation/0", nifname) == 0) {
         return &fail_next_allocation_nif;
     }
+#endif
+#ifdef AVM_CH32V006_BINARY_OOM_SELF_TEST
     if (strcmp("ch32v006:binary_allocation_probe/0", nifname) == 0) {
         return &binary_allocation_probe_nif;
     }

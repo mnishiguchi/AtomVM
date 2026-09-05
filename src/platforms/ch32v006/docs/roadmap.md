@@ -21,6 +21,7 @@ If a capability cannot meet those gates, it remains optional or unsupported.
 | --- | --- | --- |
 | one module/process, language subset, polled GPIO | stable | preserve regression coverage |
 | two same-module processes, spawn/send/receive | build-qualified experiment | rerun final image on hardware and measure memory |
+| spawn allocation failure | build-qualified experiment | hardware run with stack guard and heap readings |
 | receive timeouts | build-qualified experiment | hardware timing and long-run test |
 | byte-integer binary construction/exact matching | build-qualified experiment | hardware construction/matching test |
 | binary allocation failure | build-qualified experiment | run the binary-OOM image on hardware and confirm stack guard/headroom |
@@ -46,6 +47,7 @@ Representative self-test image sizes measured on 2026-09-05:
 | GPIO IRQ | 59,760 | 3,728 |
 | byte binaries | 59,896 | 3,592 |
 | concurrency | 61,576 | 1,912 |
+| concurrency allocation OOM | 58,556 | 4,932 |
 | receive timeouts | 61,012 | 2,476 |
 | binary allocation OOM | 60,220 | 3,268 |
 
@@ -55,8 +57,9 @@ sensitive to growth because concurrency and timers add substantial runtime code.
 
 ## Near-term work
 
-1. Hardware-qualify concurrency and timers, including allocator and stack
-   measurements. Keep the maximum at two processes until evidence supports more.
+1. Hardware-qualify concurrency, spawn allocation failure, and timers,
+   including allocator and stack measurements. Keep the maximum at two
+   processes until evidence supports more.
 2. Hardware-qualify each driver independently, starting with UART loopback and
    known-voltage ADC, then I2C/SPI devices, PWM, and GPIO edges.
 3. Run the binary-allocation OOM image on the board and record the allocator

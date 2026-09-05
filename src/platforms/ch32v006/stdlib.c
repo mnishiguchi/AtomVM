@@ -355,6 +355,8 @@ long sysconf(int name)
 __attribute__((noreturn)) void abort(void)
 {
     printf("AtomVM abort\n");
+    // A peripheral (for example PWM) may have changed the result LED mode.
+    funPinMode(PC3, FUN_OUTPUT);
     while (1) {
         funDigitalWrite(PC3, FUN_HIGH);
         Delay_Ms(600);

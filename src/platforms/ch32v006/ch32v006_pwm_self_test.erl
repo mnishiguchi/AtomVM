@@ -14,5 +14,4 @@ start() ->
     ok = pwm:set_duty(3, 900),
     ch32v006:delay_ms(300),
     ok = pwm:set_duty(3, 0),
-    ok = gpio:set_pin_mode(35, output),
     ch32v006:report(passed).

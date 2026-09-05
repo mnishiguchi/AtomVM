@@ -27,8 +27,15 @@ void platform_stack_probe_start(void);
 void platform_allocator_fail_next(void);
 #endif
 
+static void result_led_init(void)
+{
+    // PWM uses PC3 as TIM1 channel 3, so restore GPIO mode before reporting.
+    funPinMode(LED_BUILTIN, FUN_OUTPUT);
+}
+
 static void show_result(bool success)
 {
+    result_led_init();
     while (1) {
         funDigitalWrite(LED_BUILTIN, FUN_HIGH);
         Delay_Ms(success ? 100 : 600);
@@ -41,7 +48,7 @@ int main(void)
 {
     SystemInit();
     funGpioInitAll();
-    funPinMode(LED_BUILTIN, GPIO_Speed_10MHz | GPIO_CNF_OUT_PP);
+    result_led_init();
     platform_stack_guard_init();
     ch32v006_time_init();
 

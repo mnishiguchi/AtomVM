@@ -44,7 +44,7 @@ Representative self-test image sizes measured on 2026-09-05:
 | ADC | 59,048 | 4,440 |
 | UART | 60,372 | 3,116 |
 | SPI | 60,816 | 2,672 |
-| PWM | 57,844 | 5,644 |
+| PWM | 61,268 | 2,220 |
 | I2C | 62,244 | 1,244 |
 | GPIO IRQ | 59,760 | 3,728 |
 | byte binaries | 59,896 | 3,592 |

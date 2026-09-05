@@ -20,18 +20,37 @@
 #include <term.h>
 #include <utils.h>
 
-#define CH32V006_IO_TIMEOUT 100000U
+#define CH32V006_IO_TIMEOUT_MS 10U
+#define CH32V006_IO_TIMEOUT_TICKS (DELAY_MS_TIME * CH32V006_IO_TIMEOUT_MS)
 #define CH32V006_MAX_IO_BYTES 64U
+
+#if defined(AVM_CH32V006_UART) || defined(AVM_CH32V006_ADC) \
+    || defined(AVM_CH32V006_I2C) || defined(AVM_CH32V006_SPI)
+static bool io_timeout_expired(uint32_t start_ticks)
+{
+    return TimeElapsed32u(funSysTick32(), start_ticks) >= CH32V006_IO_TIMEOUT_TICKS;
+}
+#endif
 
 #if defined(AVM_CH32V006_UART) || defined(AVM_CH32V006_ADC)
 static bool wait_register_set32(volatile uint32_t *reg, uint32_t mask)
 {
-    uint32_t timeout = CH32V006_IO_TIMEOUT;
+    uint32_t start_ticks = funSysTick32();
     while ((*reg & mask) == 0U) {
-        if (timeout == 0U) {
+        if (io_timeout_expired(start_ticks)) {
             return false;
         }
-        --timeout;
+    }
+    return true;
+}
+
+static bool wait_register_clear32(volatile uint32_t *reg, uint32_t mask)
+{
+    uint32_t start_ticks = funSysTick32();
+    while ((*reg & mask) != 0U) {
+        if (io_timeout_expired(start_ticks)) {
+            return false;
+        }
     }
     return true;
 }
@@ -40,24 +59,22 @@ static bool wait_register_set32(volatile uint32_t *reg, uint32_t mask)
 #if defined(AVM_CH32V006_I2C) || defined(AVM_CH32V006_SPI)
 static bool wait_register_set16(volatile uint16_t *reg, uint16_t mask)
 {
-    uint32_t timeout = CH32V006_IO_TIMEOUT;
+    uint32_t start_ticks = funSysTick32();
     while ((*reg & mask) == 0U) {
-        if (timeout == 0U) {
+        if (io_timeout_expired(start_ticks)) {
             return false;
         }
-        --timeout;
     }
     return true;
 }
 
 static bool wait_register_clear16(volatile uint16_t *reg, uint16_t mask)
 {
-    uint32_t timeout = CH32V006_IO_TIMEOUT;
+    uint32_t start_ticks = funSysTick32();
     while ((*reg & mask) != 0U) {
-        if (timeout == 0U) {
+        if (io_timeout_expired(start_ticks)) {
             return false;
         }
-        --timeout;
     }
     return true;
 }
@@ -235,17 +252,16 @@ static uint32_t i2c_event(void)
 
 static bool i2c_wait_event(uint32_t event)
 {
-    uint32_t timeout = CH32V006_IO_TIMEOUT;
+    uint32_t start_ticks = funSysTick32();
     while ((i2c_event() & event) != event) {
         if ((I2C1->STAR1 & I2C_STAR1_AF) != 0U) {
             I2C1->STAR1 &= ~I2C_STAR1_AF;
             return false;
         }
-        if (timeout == 0U) {
+        if (io_timeout_expired(start_ticks)) {
             i2c_recover();
             return false;
         }
-        --timeout;
     }
     return true;
 }
@@ -337,17 +353,16 @@ static bool i2c_start_read_address(uint8_t address)
     }
     I2C1->DATAR = ((uint32_t) address << 1) | 1U;
 
-    uint32_t timeout = CH32V006_IO_TIMEOUT;
+    uint32_t start_ticks = funSysTick32();
     while ((I2C1->STAR1 & I2C_STAR1_ADDR) == 0U) {
         if ((I2C1->STAR1 & I2C_STAR1_AF) != 0U) {
             I2C1->STAR1 &= ~I2C_STAR1_AF;
             return false;
         }
-        if (timeout == 0U) {
+        if (io_timeout_expired(start_ticks)) {
             i2c_recover();
             return false;
         }
-        --timeout;
     }
     return true;
 }

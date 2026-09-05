@@ -20,7 +20,7 @@ If a capability cannot meet those gates, it remains optional or unsupported.
 | Capability | Status | Next gate |
 | --- | --- | --- |
 | one module/process, language subset, polled GPIO | stable | preserve regression coverage |
-| two same-module processes, spawn/send/receive | build-qualified experiment | rerun final image on hardware and measure memory |
+| two same-module processes, spawn/send/receive | hardware-qualified experiment | rerun with the 2,048-byte C-stack reserve and confirm OOM behavior |
 | two-process memory pressure | build-qualified experiment | hardware run with the 2,048-byte C-stack reserve |
 | spawn allocation failure | build-qualified experiment | hardware run with stack guard and heap readings |
 | receive timeouts | build-qualified experiment | hardware timing and long-run test |
@@ -69,6 +69,11 @@ runtime reported `4,480/6,328` bytes of heap in use (peak `4,656`) and a C-stack
 peak of `1,220/1,432` bytes, leaving `212` bytes of measured stack margin.
 Keep the stack canary enabled and treat this margin as a constraint for larger
 applications.
+
+The two-process concurrency image (`61,576` bytes) was also run on the board:
+spawn/send/receive and the two-process limit check passed with `ok`. It reported
+`4,160/6,320` bytes of heap in use (peak `4,768`), `20` process-heap words with
+one free, and a C-stack peak of `656/1,432` bytes.
 
 ## Near-term work
 

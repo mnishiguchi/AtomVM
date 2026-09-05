@@ -28,7 +28,7 @@ If a capability cannot meet those gates, it remains optional or unsupported.
 | byte-integer binary construction/exact matching | build-qualified experiment | hardware construction/matching test |
 | binary allocation failure | build-qualified experiment | run the binary-OOM image on hardware and confirm stack guard/headroom |
 | GPIO edge polling | build-qualified driver | physical rising/falling-edge tests |
-| UART1 | build-qualified driver | PD5/PD6 loopback and error-path tests |
+| UART1 | build-qualified driver | physical PD5/PD6 loopback and timeout test |
 | ADC | build-qualified driver | known-voltage measurements on PA2/A0 |
 | I2C1 | build-qualified driver | device read/write and bus-recovery tests |
 | SPI1 | build-qualified driver | PC6/PC7 loopback and device test |
@@ -42,7 +42,7 @@ Representative self-test image sizes measured on 2026-09-05:
 | Image | Bytes | Flash remaining |
 | --- | ---: | ---: |
 | ADC | 57,244 | 6,244 |
-| UART | 57,852 | 5,636 |
+| UART | 60,372 | 3,116 |
 | SPI | 59,844 | 3,644 |
 | PWM | 57,844 | 5,644 |
 | I2C | 59,708 | 3,780 |

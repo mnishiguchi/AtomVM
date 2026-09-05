@@ -24,7 +24,7 @@ If a capability cannot meet those gates, it remains optional or unsupported.
 | two-process memory pressure | hardware-qualified experiment | repeat with allocation-failure injection and preserve the stack guard |
 | spawn allocation failure | hardware-qualified experiment | preserve controlled `system_limit` behavior and stack guard |
 | receive timeouts | build-qualified experiment | hardware timing and long-run test |
-| timer memory pressure | build-qualified experiment | hardware run with the 2,048-byte C-stack reserve |
+| timer memory pressure | hardware-qualified experiment | preserve timer behavior and the 2,048-byte stack reserve |
 | byte-integer binary construction/exact matching | build-qualified experiment | hardware construction/matching test |
 | binary allocation failure | build-qualified experiment | run the binary-OOM image on hardware and confirm stack guard/headroom |
 | GPIO edge polling | build-qualified driver | physical rising/falling-edge tests |
@@ -84,6 +84,11 @@ The spawn-allocation-failure image (`58,556` bytes) passed on hardware with the
 injected allocation failure reported, the AtomVM self-test still passing, and a
 final `ok`. It reported `4,152/6,312` bytes of heap in use (peak `4,152`),
 `8` process-heap words with six free, and a C-stack peak of `656/1,432` bytes.
+
+The timer memory-pressure image (`61,012` bytes) passed on hardware with the
+timer workload and self-test completing with `ok`. It reported `4,088/5,704`
+bytes of heap in use (peak `4,656`), `14` process-heap words with four free,
+and a C-stack peak of `652/2,048` bytes.
 
 ## Near-term work
 

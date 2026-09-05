@@ -29,7 +29,7 @@ If a capability cannot meet those gates, it remains optional or unsupported.
 | binary allocation failure | build-qualified experiment | run the binary-OOM image on hardware and confirm stack guard/headroom |
 | GPIO edge polling | build-qualified driver | physical rising/falling-edge tests |
 | UART1 | build-qualified driver | physical PD5/PD6 loopback and timeout test |
-| ADC | build-qualified driver | known-voltage measurements on PA2/A0 |
+| ADC | hardware smoke-tested driver | known-voltage measurements on PA2/A0 |
 | I2C1 | build-qualified driver | device read/write and bus-recovery tests |
 | SPI1 | build-qualified driver | PC6/PC7 loopback and device test |
 | TIM1 PWM | build-qualified driver | frequency/duty measurements on PC3/PC4 |
@@ -89,6 +89,12 @@ The timer memory-pressure image (`61,012` bytes) passed on hardware with the
 timer workload and self-test completing with `ok`. It reported `4,088/5,704`
 bytes of heap in use (peak `4,656`), `14` process-heap words with four free,
 and a C-stack peak of `652/2,048` bytes.
+
+The ADC smoke-test image (`59,048` bytes) passed on hardware with channel 0
+returning an in-range sample and a final `ok`. It reported `4,032/6,312` bytes
+of heap in use (peak `4,032`), `8` process-heap words with seven free, and a
+C-stack peak of `660/1,432` bytes. No known voltage was applied, so this does
+not yet qualify ADC accuracy or pin calibration.
 
 ## Near-term work
 

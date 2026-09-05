@@ -33,19 +33,19 @@ If a capability cannot meet those gates, it remains optional or unsupported.
 “Build-qualified” means the final firmware passes AOT, instruction, ABI, and
 size validation. It does not mean the electrical behavior has been verified.
 
-Representative self-test image sizes measured on 2026-09-04:
+Representative self-test image sizes measured on 2026-09-05:
 
 | Image | Bytes | Flash remaining |
 | --- | ---: | ---: |
-| ADC | 57,200 | 6,288 |
-| UART | 57,808 | 5,680 |
-| SPI | 59,808 | 3,680 |
+| ADC | 57,244 | 6,244 |
+| UART | 57,852 | 5,636 |
+| SPI | 59,844 | 3,644 |
 | PWM | 57,844 | 5,644 |
-| I2C | 59,664 | 3,824 |
-| GPIO IRQ | 59,712 | 3,776 |
-| byte binaries | 59,856 | 3,632 |
-| concurrency | 61,524 | 1,964 |
-| receive timeouts | 60,964 | 2,524 |
+| I2C | 59,708 | 3,780 |
+| GPIO IRQ | 59,760 | 3,728 |
+| byte binaries | 59,896 | 3,592 |
+| concurrency | 61,576 | 1,912 |
+| receive timeouts | 61,012 | 2,476 |
 
 These numbers include one acceptance application and will change with code or
 toolchain revisions. The timer image has a healthier margin now, but remains

@@ -67,7 +67,8 @@ make CH32FUN=/path/to/ch32fun/ch32fun peripheral-images
 
 These targets pass AOT, native-instruction, RV32E ABI, and flash-size checks.
 They still require physical-board qualification before promotion to the stable
-tier. See the [roadmap](docs/roadmap.md) for status and measured image sizes.
+tier. Their Erlang acceptance sources live under `tests/`. See the
+[roadmap](docs/roadmap.md) for status and measured image sizes.
 
 ## Flash and monitor
 

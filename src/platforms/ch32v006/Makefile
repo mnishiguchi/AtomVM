@@ -255,37 +255,37 @@ acceptance-images:
 
 concurrency-image:
 	$(MAKE) -B CONCURRENCY=1 \
-	    START_SOURCE=$(CURDIR)/ch32v006_concurrency_self_test.erl \
+	    START_SOURCE=$(CURDIR)/tests/ch32v006_concurrency_self_test.erl \
 	    IMAGE_BASENAME=AtomVM-$(BOARD)-concurrency-self-test image
 
 timer-image:
 	$(MAKE) -B CONCURRENCY=1 TIMERS=1 \
-	    START_SOURCE=$(CURDIR)/ch32v006_timer_self_test.erl \
+	    START_SOURCE=$(CURDIR)/tests/ch32v006_timer_self_test.erl \
 	    IMAGE_BASENAME=AtomVM-$(BOARD)-timer-self-test image
 
 binary-image:
 	$(MAKE) -B BINARIES=1 \
-	    START_SOURCE=$(CURDIR)/ch32v006_binary_self_test.erl \
+	    START_SOURCE=$(CURDIR)/tests/ch32v006_binary_self_test.erl \
 	    IMAGE_BASENAME=AtomVM-$(BOARD)-binary-self-test image
 
 peripheral-images:
 	$(MAKE) -B PERIPHERALS=gpio_irq \
-	    START_SOURCE=$(CURDIR)/ch32v006_gpio_irq_self_test.erl \
+	    START_SOURCE=$(CURDIR)/tests/ch32v006_gpio_irq_self_test.erl \
 	    IMAGE_BASENAME=AtomVM-$(BOARD)-gpio-irq-self-test image
 	$(MAKE) -B PERIPHERALS=uart \
-	    START_SOURCE=$(CURDIR)/ch32v006_uart_self_test.erl \
+	    START_SOURCE=$(CURDIR)/tests/ch32v006_uart_self_test.erl \
 	    IMAGE_BASENAME=AtomVM-$(BOARD)-uart-self-test image
 	$(MAKE) -B PERIPHERALS=adc \
-	    START_SOURCE=$(CURDIR)/ch32v006_adc_self_test.erl \
+	    START_SOURCE=$(CURDIR)/tests/ch32v006_adc_self_test.erl \
 	    IMAGE_BASENAME=AtomVM-$(BOARD)-adc-self-test image
 	$(MAKE) -B PERIPHERALS=i2c \
-	    START_SOURCE=$(CURDIR)/ch32v006_i2c_self_test.erl \
+	    START_SOURCE=$(CURDIR)/tests/ch32v006_i2c_self_test.erl \
 	    IMAGE_BASENAME=AtomVM-$(BOARD)-i2c-self-test image
 	$(MAKE) -B PERIPHERALS=spi \
-	    START_SOURCE=$(CURDIR)/ch32v006_spi_self_test.erl \
+	    START_SOURCE=$(CURDIR)/tests/ch32v006_spi_self_test.erl \
 	    IMAGE_BASENAME=AtomVM-$(BOARD)-spi-self-test image
 	$(MAKE) -B PERIPHERALS=pwm \
-	    START_SOURCE=$(CURDIR)/ch32v006_pwm_self_test.erl \
+	    START_SOURCE=$(CURDIR)/tests/ch32v006_pwm_self_test.erl \
 	    IMAGE_BASENAME=AtomVM-$(BOARD)-pwm-self-test image
 
 validation-tests: $(HOST_JIT_DIR)/.stamp

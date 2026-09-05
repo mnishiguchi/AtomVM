@@ -46,7 +46,7 @@ Representative self-test image sizes measured on 2026-09-05:
 | SPI | 60,816 | 2,672 |
 | PWM | 61,268 | 2,220 |
 | I2C | 62,244 | 1,244 |
-| GPIO IRQ | 59,760 | 3,728 |
+| GPIO IRQ | 62,360 | 1,128 |
 | byte binaries | 59,896 | 3,592 |
 | concurrency | 61,576 | 1,912 |
 | concurrency memory pressure | 61,580 | 1,908 |
@@ -60,6 +60,7 @@ toolchain revisions. The timer image has a healthier margin now, but remains
 sensitive to growth because concurrency and timers add substantial runtime code.
 The I2C image is currently the tightest peripheral image after its argument
 guards were added.
+The GPIO IRQ image is now tighter still after adding its pin and edge guards.
 
 ## Near-term work
 

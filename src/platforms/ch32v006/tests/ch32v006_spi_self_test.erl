@@ -8,11 +8,18 @@
 -export([start/0]).
 
 start() ->
-    Result = verify(low_clock_guard(), transfer_byte_loopback()),
+    Result = verify(low_clock_guard(), high_clock_guard(), transfer_byte_loopback()),
     ch32v006:report(Result).
 
 low_clock_guard() ->
     try spi:init(1, 0) of
+        _ -> failed
+    catch
+        error:badarg -> passed
+    end.
+
+high_clock_guard() ->
+    try spi:init(24000001, 0) of
         _ -> failed
     catch
         error:badarg -> passed
@@ -25,7 +32,7 @@ transfer_byte_loopback() ->
         _ -> failed
     end.
 
-verify(passed, passed) ->
+verify(passed, passed, passed) ->
     passed;
-verify(_, _) ->
+verify(_, _, _) ->
     failed.

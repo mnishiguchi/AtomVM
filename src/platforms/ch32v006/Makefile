@@ -223,7 +223,7 @@ endif
 $(EMBEDDED_BEAM): $(PRECOMPILED_BEAM) FORCE
 	cp $< $@
 
-.PHONY: build image verify-image release-image acceptance-images concurrency-image concurrency-oom-image timer-image binary-image binary-oom-image peripheral-images validation-tests flash-uiap monitor-uiap clean help FORCE
+.PHONY: build image verify-image release-image acceptance-images concurrency-image concurrency-memory-image concurrency-oom-image timer-image binary-image binary-oom-image peripheral-images validation-tests flash-uiap monitor-uiap clean help FORCE
 FORCE:
 
 build: $(TARGET).bin
@@ -269,6 +269,12 @@ concurrency-image:
 	$(MAKE) -B CONCURRENCY=1 \
 	    START_SOURCE=$(CURDIR)/tests/ch32v006_concurrency_self_test.erl \
 	    IMAGE_BASENAME=AtomVM-$(BOARD)-concurrency-self-test image
+
+concurrency-memory-image:
+	$(MAKE) -B CONCURRENCY=1 \
+	    C_STACK_RESERVE_BYTES=$(MEMORY_PRESSURE_STACK_RESERVE_BYTES) \
+	    START_SOURCE=$(CURDIR)/tests/ch32v006_concurrency_self_test.erl \
+	    IMAGE_BASENAME=AtomVM-$(BOARD)-concurrency-memory-pressure-self-test image
 
 concurrency-oom-image:
 	$(MAKE) -B CONCURRENCY=1 \
@@ -340,6 +346,7 @@ help:
 	@echo "  release-image      Build a versioned BIN image and SHA-256 file"
 	@echo "  acceptance-images  Build language, GPIO, and default image sets"
 	@echo "  concurrency-image  Build the experimental two-process acceptance image"
+	@echo "  concurrency-memory-image  Build the two-process memory-pressure image"
 	@echo "  concurrency-oom-image  Build the spawn allocation-failure image"
 	@echo "  timer-image        Build the experimental receive-timeout acceptance image"
 	@echo "  binary-image       Build the experimental byte-binary acceptance image"

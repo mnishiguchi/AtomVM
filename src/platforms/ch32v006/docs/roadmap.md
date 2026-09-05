@@ -21,6 +21,7 @@ If a capability cannot meet those gates, it remains optional or unsupported.
 | --- | --- | --- |
 | one module/process, language subset, polled GPIO | stable | preserve regression coverage |
 | two same-module processes, spawn/send/receive | build-qualified experiment | rerun final image on hardware and measure memory |
+| two-process memory pressure | build-qualified experiment | hardware run with the 2,048-byte C-stack reserve |
 | spawn allocation failure | build-qualified experiment | hardware run with stack guard and heap readings |
 | receive timeouts | build-qualified experiment | hardware timing and long-run test |
 | byte-integer binary construction/exact matching | build-qualified experiment | hardware construction/matching test |
@@ -47,6 +48,7 @@ Representative self-test image sizes measured on 2026-09-05:
 | GPIO IRQ | 59,760 | 3,728 |
 | byte binaries | 59,896 | 3,592 |
 | concurrency | 61,576 | 1,912 |
+| concurrency memory pressure | 61,580 | 1,908 |
 | concurrency allocation OOM | 58,556 | 4,932 |
 | receive timeouts | 61,012 | 2,476 |
 | binary allocation OOM | 60,220 | 3,268 |

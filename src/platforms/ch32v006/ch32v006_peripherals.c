@@ -596,7 +596,9 @@ static term nif_spi_init(Context *ctx, int argc, term argv[])
     }
     avm_int_t clock_hz = term_to_int(argv[0]);
     avm_int_t mode = term_to_int(argv[1]);
-    if (clock_hz <= 0 || clock_hz > FUNCONF_SYSTEM_CORE_CLOCK / 2 || mode < 0 || mode > 3) {
+    if (clock_hz < (avm_int_t) (FUNCONF_SYSTEM_CORE_CLOCK / 256U)
+        || clock_hz > (avm_int_t) (FUNCONF_SYSTEM_CORE_CLOCK / 2U)
+        || mode < 0 || mode > 3) {
         return term_invalid_term();
     }
     spi_setup((uint32_t) clock_hz, (uint32_t) mode);

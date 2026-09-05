@@ -8,10 +8,24 @@
 -export([start/0]).
 
 start() ->
-    ok = spi:init(1000000, 0),
-    Result =
-        case spi:transfer_byte(16#A5) of
-            16#A5 -> passed;
-            _ -> failed
-        end,
+    Result = verify(low_clock_guard(), transfer_byte_loopback()),
     ch32v006:report(Result).
+
+low_clock_guard() ->
+    try spi:init(1, 0) of
+        _ -> failed
+    catch
+        error:badarg -> passed
+    end.
+
+transfer_byte_loopback() ->
+    ok = spi:init(1000000, 0),
+    case spi:transfer_byte(16#A5) of
+        16#A5 -> passed;
+        _ -> failed
+    end.
+
+verify(passed, passed) ->
+    passed;
+verify(_, _) ->
+    failed.

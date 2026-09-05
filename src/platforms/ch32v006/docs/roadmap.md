@@ -32,7 +32,7 @@ If a capability cannot meet those gates, it remains optional or unsupported.
 | ADC | hardware smoke-tested driver | known-voltage measurements on PA2/A0 |
 | I2C1 | build-qualified driver | device read/write and bus-recovery tests |
 | SPI1 | build-qualified driver | PC6/PC7 loopback and device test |
-| TIM1 PWM | build-qualified driver | frequency/duty measurements on PC3/PC4 |
+| TIM1 PWM | hardware smoke-tested driver | frequency/duty measurements on PC3/PC4 |
 
 “Build-qualified” means the final firmware passes AOT, instruction, ABI, and
 size validation. It does not mean the electrical behavior has been verified.
@@ -95,6 +95,12 @@ returning an in-range sample and a final `ok`. It reported `4,032/6,312` bytes
 of heap in use (peak `4,032`), `8` process-heap words with seven free, and a
 C-stack peak of `660/1,432` bytes. No known voltage was applied, so this does
 not yet qualify ADC accuracy or pin calibration.
+
+The PWM smoke-test image (`61,268` bytes) passed on hardware with the argument
+guards and TIM1/PC3 path completing with `ok`. It reported `4,096/6,320` bytes
+of heap in use (peak `4,096`), `8` process-heap words with seven free, and a
+C-stack peak of `660/1,432` bytes. Electrical frequency and duty-cycle
+measurement remains outstanding.
 
 ## Near-term work
 

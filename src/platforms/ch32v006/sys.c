@@ -12,12 +12,14 @@
 #include <sys.h>
 #include <utils.h>
 
-#ifdef AVM_CH32V006_SELF_TEST
-#define SYSTICK_TRACK_INTERVAL_TICKS (DELAY_MS_TIME * 10U)
-#else
-#define SYSTICK_TRACK_INTERVAL_TICKS UINT32_C(0x40000000)
-#endif
+/* Track complete milliseconds so the hot path avoids 64-bit tick division on RV32E. */
 #define SYSTICK_MAX_DELAY_MS ((UINT32_MAX / DELAY_MS_TIME) / 2U)
+#ifdef AVM_CH32V006_SELF_TEST
+#define SYSTICK_TRACK_INTERVAL_MS 10U
+#else
+#define SYSTICK_TRACK_INTERVAL_MS SYSTICK_MAX_DELAY_MS
+#endif
+#define SYSTICK_TRACK_INTERVAL_TICKS (DELAY_MS_TIME * SYSTICK_TRACK_INTERVAL_MS)
 
 static volatile uint32_t systick_sequence;
 static volatile uint32_t systick_completed_intervals;
@@ -162,9 +164,9 @@ uint64_t sys_monotonic_time_u64(void)
         sequence_after = systick_sequence;
     } while ((sequence_before & 1U) || sequence_before != sequence_after);
 
-    uint64_t ticks = ((uint64_t) completed_intervals * SYSTICK_TRACK_INTERVAL_TICKS)
-        + (uint32_t) (systick - interval_start);
-    return ticks / DELAY_MS_TIME;
+    uint64_t completed_milliseconds = (uint64_t) completed_intervals * SYSTICK_TRACK_INTERVAL_MS;
+    uint32_t elapsed_milliseconds = (uint32_t) (systick - interval_start) / DELAY_MS_TIME;
+    return completed_milliseconds + elapsed_milliseconds;
 }
 
 #ifdef AVM_CH32V006_SELF_TEST

@@ -8,32 +8,21 @@
 -export([start/0, child/1]).
 
 start() ->
-    TimeoutResult =
+    receive
+        impossible ->
+            ch32v006:report(failed)
+    after 25 ->
+        Parent = self(),
+        Child = spawn(?MODULE, child, [Parent]),
+        Child ! ping,
         receive
-            impossible -> failed
-        after 25 ->
-            passed
-        end,
-    Parent = self(),
-    Child = spawn(?MODULE, child, [Parent]),
-    Child ! ping,
-    CancelResult =
-        receive
-            {pong, Child} -> passed
+            {pong, Child} -> ch32v006:report(passed)
         after 200 ->
-            failed
-        end,
-    Child ! stop,
-    ch32v006:report(combine(TimeoutResult, CancelResult)).
+            ch32v006:report(failed)
+        end
+    end.
 
 child(Parent) ->
     receive
-        ping ->
-            Parent ! {pong, self()},
-            child(Parent);
-        stop ->
-            ok
+        ping -> Parent ! {pong, self()}
     end.
-
-combine(passed, passed) -> passed;
-combine(_, _) -> failed.

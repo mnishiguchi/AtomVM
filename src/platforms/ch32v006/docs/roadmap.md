@@ -23,7 +23,7 @@ If a capability cannot meet those gates, it remains optional or unsupported.
 | two same-module processes, spawn/send/receive | hardware-qualified experiment | rerun with the 2,048-byte C-stack reserve and confirm OOM behavior |
 | two-process memory pressure | hardware-qualified experiment | repeat with allocation-failure injection and preserve the stack guard |
 | spawn allocation failure | hardware-qualified experiment | preserve controlled `system_limit` behavior and stack guard |
-| receive timeouts | build-qualified experiment | hardware timing and long-run test |
+| receive timeouts | hardware-qualified experiment | preserve timeout behavior in long-run tests |
 | timer memory pressure | hardware-qualified experiment | preserve timer behavior and the 2,048-byte stack reserve |
 | byte-integer binary construction/exact matching | hardware-qualified experiment | preserve the deliberately narrow binary subset |
 | binary allocation failure | hardware-qualified experiment | preserve controlled failure and stack guard |
@@ -112,6 +112,11 @@ with the exact-match workload and self-test completing with `ok`. It reported
 `4,048/6,328` bytes of heap in use (peak `4,048`), `20` process-heap words with
 seven free, and a C-stack peak of `672/1,432` bytes. Sub-binaries, UTF
 segments, floats, and arbitrary binary copying remain unsupported.
+
+The normal timer/receive-timeout image (`61,012` bytes) passed on hardware with
+the timeout workload and self-test completing with `ok`. It reported
+`4,088/6,320` bytes of heap in use (peak `4,656`), `14` process-heap words with
+four free, and a C-stack peak of `652/1,432` bytes.
 
 ## Near-term work
 

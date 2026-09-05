@@ -22,7 +22,8 @@ If a capability cannot meet those gates, it remains optional or unsupported.
 | one module/process, language subset, polled GPIO | stable | preserve regression coverage |
 | two same-module processes, spawn/send/receive | build-qualified experiment | rerun final image on hardware and measure memory |
 | receive timeouts | build-qualified experiment | hardware timing and long-run test |
-| byte-integer binary construction/exact matching | build-qualified experiment | hardware and OOM tests |
+| byte-integer binary construction/exact matching | build-qualified experiment | hardware construction/matching test |
+| binary allocation failure | build-qualified experiment | run the binary-OOM image on hardware and confirm stack guard/headroom |
 | GPIO edge polling | build-qualified driver | physical rising/falling-edge tests |
 | UART1 | build-qualified driver | PD5/PD6 loopback and error-path tests |
 | ADC | build-qualified driver | known-voltage measurements on PA2/A0 |
@@ -46,6 +47,7 @@ Representative self-test image sizes measured on 2026-09-05:
 | byte binaries | 59,896 | 3,592 |
 | concurrency | 61,576 | 1,912 |
 | receive timeouts | 61,012 | 2,476 |
+| binary allocation OOM | 60,220 | 3,268 |
 
 These numbers include one acceptance application and will change with code or
 toolchain revisions. The timer image has a healthier margin now, but remains
@@ -57,8 +59,9 @@ sensitive to growth because concurrency and timers add substantial runtime code.
    measurements. Keep the maximum at two processes until evidence supports more.
 2. Hardware-qualify each driver independently, starting with UART loopback and
    known-voltage ADC, then I2C/SPI devices, PWM, and GPIO edges.
-3. Add controlled binary-allocation failure coverage. Keep sub-binaries, UTF
-   segments, floats, and arbitrary binary copying as AOT errors.
+3. Run the binary-allocation OOM image on the board and record the allocator
+   and C-stack readings. Keep sub-binaries, UTF segments, floats, and arbitrary
+   binary copying as AOT errors.
 4. Use the first real peripheral application to decide which runtime and driver
    combination deserves optimization. Do not enable all experiments by default.
 5. Attempt a small combined application only after its required tiers fit with

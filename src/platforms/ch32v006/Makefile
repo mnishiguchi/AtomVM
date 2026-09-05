@@ -149,12 +149,16 @@ ifeq ($(ALLOW_SWIO_PIN),1)
 EXTRA_CFLAGS += -DAVM_CH32V006_ALLOW_SWIO_PIN
 endif
 
-ifneq ($(filter ch32v006_self_test ch32v006_gpio_self_test ch32v006_heap_oom_self_test ch32v006_oom_self_test ch32v006_concurrency_self_test ch32v006_timer_self_test ch32v006_binary_self_test ch32v006_gpio_irq_self_test ch32v006_uart_self_test ch32v006_adc_self_test ch32v006_i2c_self_test ch32v006_spi_self_test ch32v006_pwm_self_test,$(START_NAME)),)
+ifneq ($(filter ch32v006_self_test ch32v006_gpio_self_test ch32v006_heap_oom_self_test ch32v006_oom_self_test ch32v006_concurrency_self_test ch32v006_timer_self_test ch32v006_binary_self_test ch32v006_binary_oom_self_test ch32v006_gpio_irq_self_test ch32v006_uart_self_test ch32v006_adc_self_test ch32v006_i2c_self_test ch32v006_spi_self_test ch32v006_pwm_self_test,$(START_NAME)),)
 EXTRA_CFLAGS += -DAVM_CH32V006_SELF_TEST
 endif
 
 ifeq ($(START_NAME),ch32v006_oom_self_test)
 EXTRA_CFLAGS += -DAVM_CH32V006_OOM_SELF_TEST
+endif
+
+ifeq ($(START_NAME),ch32v006_binary_oom_self_test)
+EXTRA_CFLAGS += -DAVM_CH32V006_BINARY_OOM_SELF_TEST
 endif
 
 EXTRA_ELF_DEPENDENCIES := $(EMBEDDED_BEAM) $(ABI_CANARY_BIN)
@@ -211,7 +215,7 @@ endif
 $(EMBEDDED_BEAM): $(PRECOMPILED_BEAM) FORCE
 	cp $< $@
 
-.PHONY: build image verify-image release-image acceptance-images concurrency-image timer-image binary-image peripheral-images validation-tests flash-uiap monitor-uiap clean help FORCE
+.PHONY: build image verify-image release-image acceptance-images concurrency-image timer-image binary-image binary-oom-image peripheral-images validation-tests flash-uiap monitor-uiap clean help FORCE
 FORCE:
 
 build: $(TARGET).bin
@@ -268,6 +272,11 @@ binary-image:
 	    START_SOURCE=$(CURDIR)/tests/ch32v006_binary_self_test.erl \
 	    IMAGE_BASENAME=AtomVM-$(BOARD)-binary-self-test image
 
+binary-oom-image:
+	$(MAKE) -B BINARIES=1 \
+	    START_SOURCE=$(CURDIR)/tests/ch32v006_binary_oom_self_test.erl \
+	    IMAGE_BASENAME=AtomVM-$(BOARD)-binary-oom-self-test image
+
 peripheral-images:
 	$(MAKE) -B PERIPHERALS=gpio_irq \
 	    START_SOURCE=$(CURDIR)/tests/ch32v006_gpio_irq_self_test.erl \
@@ -320,6 +329,7 @@ help:
 	@echo "  concurrency-image  Build the experimental two-process acceptance image"
 	@echo "  timer-image        Build the experimental receive-timeout acceptance image"
 	@echo "  binary-image       Build the experimental byte-binary acceptance image"
+	@echo "  binary-oom-image   Build the binary-allocation failure acceptance image"
 	@echo "  peripheral-images  Build each experimental peripheral image independently"
 	@echo "  validation-tests   Check the CH32V006 native-code validator"
 	@echo "  flash-uiap         Flash the current image through the UIAP programmer"

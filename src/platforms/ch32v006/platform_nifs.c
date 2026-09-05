@@ -21,8 +21,12 @@
 
 #include <defaultatoms.h>
 #include <interop.h>
-#if defined(AVM_CH32V006_SELF_TEST) || defined(AVM_MINIMAL_RUNTIME_CONCURRENCY)
+#if defined(AVM_CH32V006_SELF_TEST) || defined(AVM_MINIMAL_RUNTIME_CONCURRENCY) \
+    || defined(AVM_CH32V006_BINARY_OOM_SELF_TEST)
 #include <memory.h>
+#endif
+#ifdef AVM_CH32V006_BINARY_OOM_SELF_TEST
+#include <context.h>
 #endif
 #include <platform_nifs.h>
 #include <term.h>
@@ -39,6 +43,9 @@
 void platform_heap_stats(size_t *capacity, size_t *current, size_t *peak);
 size_t platform_stack_peak(void);
 size_t platform_stack_reserve(void);
+#endif
+#ifdef AVM_CH32V006_BINARY_OOM_SELF_TEST
+void platform_allocator_fail_next(void);
 #endif
 
 enum
@@ -323,6 +330,43 @@ static term nif_report(Context *ctx, int argc, term argv[])
 }
 #endif
 
+#ifdef AVM_CH32V006_BINARY_OOM_SELF_TEST
+static term nif_fail_next_allocation(Context *ctx, int argc, term argv[])
+{
+    UNUSED(ctx);
+    UNUSED(argv);
+    if (argc != 0) {
+        return term_invalid_term();
+    }
+    platform_allocator_fail_next();
+    return OK_ATOM;
+}
+
+static term nif_binary_allocation_probe(Context *ctx, int argc, term argv[])
+{
+    UNUSED(argv);
+    if (argc != 0) {
+        return term_invalid_term();
+    }
+    if (memory_ensure_free_opt(
+            ctx, TERM_BOXED_REFC_BINARY_SIZE, MEMORY_CAN_SHRINK)
+        != MEMORY_GC_OK) {
+        context_set_exception_class(ctx, ERROR_ATOM);
+        ctx->exception_reason = OUT_OF_MEMORY_ATOM;
+        ctx->x[0] = ERROR_ATOM;
+        return term_invalid_term();
+    }
+    term binary = term_create_empty_binary(64, &ctx->heap, ctx->global);
+    if (term_is_invalid_term(binary)) {
+        context_set_exception_class(ctx, ERROR_ATOM);
+        ctx->exception_reason = OUT_OF_MEMORY_ATOM;
+        ctx->x[0] = ERROR_ATOM;
+        return term_invalid_term();
+    }
+    return binary;
+}
+#endif
+
 #define DEFINE_NIF(name)                                          \
     static const struct Nif name##_nif                            \
         __attribute__((section(".rodata.ch32v006_nifs")))         \
@@ -343,6 +387,10 @@ DEFINE_NIF(spawn);
 #endif
 #ifdef AVM_CH32V006_SELF_TEST
 DEFINE_NIF(report);
+#endif
+#ifdef AVM_CH32V006_BINARY_OOM_SELF_TEST
+DEFINE_NIF(fail_next_allocation);
+DEFINE_NIF(binary_allocation_probe);
 #endif
 
 const struct Nif *platform_nifs_get_nif(const char *nifname)
@@ -379,6 +427,14 @@ const struct Nif *platform_nifs_get_nif(const char *nifname)
 #ifdef AVM_CH32V006_SELF_TEST
     if (strcmp("ch32v006:report/1", nifname) == 0) {
         return &report_nif;
+    }
+#endif
+#ifdef AVM_CH32V006_BINARY_OOM_SELF_TEST
+    if (strcmp("ch32v006:fail_next_allocation/0", nifname) == 0) {
+        return &fail_next_allocation_nif;
+    }
+    if (strcmp("ch32v006:binary_allocation_probe/0", nifname) == 0) {
+        return &binary_allocation_probe_nif;
     }
 #endif
 #ifdef AVM_CH32V006_PERIPHERALS

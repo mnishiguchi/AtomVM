@@ -22,7 +22,7 @@ If a capability cannot meet those gates, it remains optional or unsupported.
 | one module/process, language subset, polled GPIO | stable | preserve regression coverage |
 | two same-module processes, spawn/send/receive | hardware-qualified experiment | rerun with the 2,048-byte C-stack reserve and confirm OOM behavior |
 | two-process memory pressure | hardware-qualified experiment | repeat with allocation-failure injection and preserve the stack guard |
-| spawn allocation failure | build-qualified experiment | hardware run with stack guard and heap readings |
+| spawn allocation failure | hardware-qualified experiment | preserve controlled `system_limit` behavior and stack guard |
 | receive timeouts | build-qualified experiment | hardware timing and long-run test |
 | timer memory pressure | build-qualified experiment | hardware run with the 2,048-byte C-stack reserve |
 | byte-integer binary construction/exact matching | build-qualified experiment | hardware construction/matching test |
@@ -79,6 +79,11 @@ The same concurrency workload with a 2,048-byte C-stack reserve (`61,580`
 bytes) also passed on hardware. It reported `4,160/5,704` bytes of heap in use
 (peak `4,768`), `20` process-heap words with one free, and a C-stack peak of
 `656/2,048` bytes.
+
+The spawn-allocation-failure image (`58,556` bytes) passed on hardware with the
+injected allocation failure reported, the AtomVM self-test still passing, and a
+final `ok`. It reported `4,152/6,312` bytes of heap in use (peak `4,152`),
+`8` process-heap words with six free, and a C-stack peak of `656/1,432` bytes.
 
 ## Near-term work
 

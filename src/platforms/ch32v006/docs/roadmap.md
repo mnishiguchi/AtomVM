@@ -21,7 +21,7 @@ If a capability cannot meet those gates, it remains optional or unsupported.
 | --- | --- | --- |
 | one module/process, language subset, polled GPIO | stable | preserve regression coverage |
 | two same-module processes, spawn/send/receive | hardware-qualified experiment | rerun with the 2,048-byte C-stack reserve and confirm OOM behavior |
-| two-process memory pressure | build-qualified experiment | hardware run with the 2,048-byte C-stack reserve |
+| two-process memory pressure | hardware-qualified experiment | repeat with allocation-failure injection and preserve the stack guard |
 | spawn allocation failure | build-qualified experiment | hardware run with stack guard and heap readings |
 | receive timeouts | build-qualified experiment | hardware timing and long-run test |
 | timer memory pressure | build-qualified experiment | hardware run with the 2,048-byte C-stack reserve |
@@ -74,6 +74,11 @@ The two-process concurrency image (`61,576` bytes) was also run on the board:
 spawn/send/receive and the two-process limit check passed with `ok`. It reported
 `4,160/6,320` bytes of heap in use (peak `4,768`), `20` process-heap words with
 one free, and a C-stack peak of `656/1,432` bytes.
+
+The same concurrency workload with a 2,048-byte C-stack reserve (`61,580`
+bytes) also passed on hardware. It reported `4,160/5,704` bytes of heap in use
+(peak `4,768`), `20` process-heap words with one free, and a C-stack peak of
+`656/2,048` bytes.
 
 ## Near-term work
 

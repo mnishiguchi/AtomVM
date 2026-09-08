@@ -77,7 +77,7 @@ jobs:
           CH32FUN_ROOT: ${{ runner.temp }}/ch32fun
         run: |
           make CH32FUN="$CH32FUN_ROOT/ch32fun" clean
-          make CH32FUN="$CH32FUN_ROOT/ch32fun" acceptance-images
+          make CH32FUN="$CH32FUN_ROOT/ch32fun" qualification-images
           make CH32FUN="$CH32FUN_ROOT/ch32fun" \
             ATOMVM_VERSION="$AVM_IMAGE_VERSION" release-image
 
@@ -86,20 +86,31 @@ jobs:
         env:
           CH32FUN_ROOT: ${{ runner.temp }}/ch32fun
         run: |
+          make CH32FUN="$CH32FUN_ROOT/ch32fun" \
+            external-send-image external-send-lifecycle-image external-send-badarg-image
           mkdir -p build/elixir-examples
           elixirc -o build/elixir-examples \
             ../../../examples/elixir/ch32v006/Blink.ex \
-            ../../../examples/elixir/ch32v006/Button.ex
+            ../../../examples/elixir/ch32v006/Button.ex \
+            ../../../examples/elixir/ch32v006/TimerBlink.ex
           make CH32FUN="$CH32FUN_ROOT/ch32fun" \
             START_BEAM_INPUT=build/elixir-examples/Elixir.Blink.beam \
             IMAGE_BASENAME=AtomVM-uiapduino-pro-micro-ch32v006-elixir-blink image
           make CH32FUN="$CH32FUN_ROOT/ch32fun" \
             START_BEAM_INPUT=build/elixir-examples/Elixir.Button.beam \
             IMAGE_BASENAME=AtomVM-uiapduino-pro-micro-ch32v006-elixir-button image
+          make -B CH32FUN="$CH32FUN_ROOT/ch32fun" CONCURRENCY=1 TIMERS=1 \
+            START_BEAM_INPUT=build/elixir-examples/Elixir.TimerBlink.beam \
+            IMAGE_BASENAME=AtomVM-uiapduino-pro-micro-ch32v006-elixir-timer-blink image
 
-      - name: Verify release checksum and ELF ABI
+      - name: Verify build records, release checksum, and ELF ABI
         working-directory: src/platforms/ch32v006
         run: |
+          for artifact in build/images/*.bin build/release/*.bin; do
+            record="${artifact%.bin}.build-info.txt"
+            digest=$(sed -n 's/^image_sha256=//p' "$record")
+            printf '%s  %s\n' "$digest" "$artifact" | sha256sum -c -
+          done
           cd build/release
           sha256sum -c "AtomVM-uiapduino-pro-micro-ch32v006-${AVM_IMAGE_VERSION}.bin.sha256"
           cd ../images
@@ -141,3 +152,4 @@ jobs:
           files: |
             ch32v006-artifacts/release/AtomVM-uiapduino-pro-micro-ch32v006-${{ github.ref_name }}.bin
             ch32v006-artifacts/release/AtomVM-uiapduino-pro-micro-ch32v006-${{ github.ref_name }}.bin.sha256
+            ch32v006-artifacts/release/AtomVM-uiapduino-pro-micro-ch32v006-${{ github.ref_name }}.build-info.txt

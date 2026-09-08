@@ -489,9 +489,10 @@ static Context *jit_call_ext(Context *ctx, JITState *jit_state, int offset, int 
     }
 
     const struct Nif *nif = EXPORTED_FUNCTION_TO_NIF(func);
+    context_clear_exception(ctx);
     term return_value = nif->nif_ptr(ctx, arity, ctx->x);
     if (term_is_invalid_term(return_value)) {
-        if (ctx->x[0] != ERROR_ATOM && ctx->x[0] != LOWERCASE_EXIT_ATOM && ctx->x[0] != THROW_ATOM) {
+        if (!context_has_pending_exception(ctx)) {
             set_error(ctx, jit_state, offset, BADARG_ATOM);
         }
         return jit_handle_error(ctx, jit_state, offset);
@@ -1129,7 +1130,7 @@ static void jit_mailbox_next(Context *ctx)
 static void jit_cancel_timeout(Context *ctx)
 {
     TRACE("jit_cancel_timeout: ctx->process_id=%" PRId32 "\n", ctx->process_id);
-#ifdef AVM_MINIMAL_RUNTIME_TIMERS
+#if !defined(AVM_MINIMAL_RUNTIME) || defined(AVM_MINIMAL_RUNTIME_TIMERS)
     if (context_get_flags(ctx, WaitingTimeout | WaitingTimeoutExpired)) {
         scheduler_cancel_timeout(ctx);
     }

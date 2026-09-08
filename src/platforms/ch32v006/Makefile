@@ -44,7 +44,6 @@ START_NAME := $(notdir $(basename $(START_BEAM_INPUT)))
 else
 START_NAME := $(notdir $(basename $(START_SOURCE)))
 endif
-PRECOMPILED_BEAM := $(BUILD_DIR)/$(START_NAME).beam
 EMBEDDED_BEAM := $(BUILD_DIR)/start.beam
 ABI_CANARY_BIN := $(BUILD_DIR)/ch32v006_abi_canary.bin
 IMAGE_BASENAME ?= AtomVM-$(BOARD)
@@ -153,6 +152,10 @@ EXPECTED_JIT_VARIANT := 77
 EXTRA_CFLAGS += -DAVM_MINIMAL_RUNTIME_BINARIES
 endif
 
+AOT_CACHE_KEY := $(subst +,-,$(AOT_TARGET))
+COMPILED_BEAM := $(BUILD_DIR)/$(START_NAME).beam
+PRECOMPILED_BEAM := $(BUILD_DIR)/$(START_NAME).$(AOT_CACHE_KEY).beam
+
 ifeq ($(ALLOW_SWIO_PIN),1)
 EXTRA_CFLAGS += -DAVM_CH32V006_ALLOW_SWIO_PIN
 endif
@@ -244,8 +247,9 @@ $(PRECOMPILED_BEAM): $(START_SOURCE) $(HOST_JIT_STAMP)
 	mkdir -p $(BUILD_DIR)
 	erlc +debug_info -o $(BUILD_DIR) $<
 ifeq ($(START_NAME),ch32v006_arithmetic_boundary_self_test)
-	erl -noshell -eval '{beam_file, _, _, _, _, Functions} = beam_disasm:file("$@"), Instructions = lists:append([Is || {function, _, _, _, Is} <- Functions]), Ops = [Op || {gc_bif, Op, _, _, _, _} <- Instructions], Expected = [list_to_atom(S) || S <- ["+", "-", "*", "div", "rem"]], true = lists:all(fun(Op) -> lists:member(Op, Ops) end, Expected), halt().'
+	erl -noshell -eval '{beam_file, _, _, _, _, Functions} = beam_disasm:file("$(COMPILED_BEAM)"), Instructions = lists:append([Is || {function, _, _, _, Is} <- Functions]), Ops = [Op || {gc_bif, Op, _, _, _, _} <- Instructions], Expected = [list_to_atom(S) || S <- ["+", "-", "*", "div", "rem"]], true = lists:all(fun(Op) -> lists:member(Op, Ops) end, Expected), halt().'
 endif
+	cp $(COMPILED_BEAM) $@
 	erl -pa $(HOST_JIT_DIR) -noshell \
 	    -eval 'jit_precompile:compile("$(AOT_TARGET)", "$(BUILD_DIR)", false, "$@"), halt().'
 	erl -pa $(HOST_JIT_DIR) -noshell \
@@ -271,6 +275,8 @@ verify-image: build
 	echo "Verified $(TARGET).bin: $$flash_bytes / $(FLASH_LIMIT) bytes ($$(( $(FLASH_LIMIT) - flash_bytes )) bytes free)"
 	@riscv64-unknown-elf-readelf -h $(TARGET).elf | grep -Fq 'RISC-V'
 	@riscv64-unknown-elf-readelf -h $(TARGET).elf | grep -Fq 'RVE'
+	@erl -pa $(HOST_JIT_DIR) -noshell \
+	    -eval 'ok = ch32v006_validate:validate_beam("$(EMBEDDED_BEAM)", $(EXPECTED_JIT_VARIANT)), halt().'
 
 # Keep this record beside the packaged artifact: later builds reuse start.beam
 # and atomvm_ch32v006.*, so their metadata must be captured before the next build.

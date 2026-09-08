@@ -87,8 +87,8 @@ static bool wait_register_clear16(volatile uint16_t *reg, uint16_t mask)
               .base.type = NIFFunctionType, .nif_ptr = nif_##name \
           }
 
-#if defined(AVM_CH32V006_I2C) || defined(AVM_CH32V006_SPI)
-static term make_binary(Context *ctx, size_t size, uint8_t **data)
+#if defined(AVM_CH32V006_I2C) || defined(AVM_CH32V006_SPI) || defined(AVM_CH32V006_IO_BINARY_SELF_TEST)
+static term make_binary_with_roots(Context *ctx, size_t size, uint8_t **data, size_t num_roots, term *roots)
 {
     if (size > CH32V006_MAX_IO_BYTES) {
         return term_invalid_term();
@@ -99,7 +99,7 @@ static term make_binary(Context *ctx, size_t size, uint8_t **data)
     // cheaper and simpler as process-heap binaries on this 8 KiB target.
     size_t data_terms = ((size + sizeof(term) - 1U) / sizeof(term)) + 1U;
     size_t heap_terms = data_terms + 1U;
-    if (memory_ensure_free_opt(ctx, heap_terms, MEMORY_CAN_SHRINK) != MEMORY_GC_OK) {
+    if (memory_ensure_free_with_roots(ctx, heap_terms, num_roots, roots, MEMORY_CAN_SHRINK) != MEMORY_GC_OK) {
         return term_invalid_term();
     }
 
@@ -109,6 +109,13 @@ static term make_binary(Context *ctx, size_t size, uint8_t **data)
     *data = (uint8_t *) (boxed + 2);
     return ((term) boxed) | TERM_PRIMARY_BOXED;
 }
+
+#if defined(AVM_CH32V006_I2C) || defined(AVM_CH32V006_IO_BINARY_SELF_TEST)
+static term make_binary(Context *ctx, size_t size, uint8_t **data)
+{
+    return make_binary_with_roots(ctx, size, data, 0, NULL);
+}
+#endif
 #endif
 
 #ifdef AVM_CH32V006_IO_BINARY_SELF_TEST
@@ -688,12 +695,13 @@ static term nif_spi_transfer(Context *ctx, int argc, term argv[])
     if (!spi_initialized) {
         return ERROR_ATOM;
     }
-    const uint8_t *tx = (const uint8_t *) term_binary_data(argv[0]);
+    term tx_binary = argv[0];
     uint8_t *rx;
-    term binary = make_binary(ctx, size, &rx);
+    term binary = make_binary_with_roots(ctx, size, &rx, 1, &tx_binary);
     if (term_is_invalid_term(binary)) {
         return binary;
     }
+    const uint8_t *tx = (const uint8_t *) term_binary_data(tx_binary);
 
     for (size_t i = 0; i < size; ++i) {
         if (!wait_register_set16(&SPI1->STATR, SPI_STATR_TXE)) {

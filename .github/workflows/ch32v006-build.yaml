@@ -91,6 +91,7 @@ jobs:
           mkdir -p build/elixir-examples
           elixirc -o build/elixir-examples \
             ../../../examples/elixir/ch32v006/Blink.ex \
+            ../../../examples/elixir/ch32v006/BinaryPacket.ex \
             ../../../examples/elixir/ch32v006/Button.ex \
             ../../../examples/elixir/ch32v006/TimerBlink.ex
           make CH32FUN="$CH32FUN_ROOT/ch32fun" \
@@ -99,6 +100,9 @@ jobs:
           make CH32FUN="$CH32FUN_ROOT/ch32fun" \
             START_BEAM_INPUT=build/elixir-examples/Elixir.Button.beam \
             IMAGE_BASENAME=AtomVM-uiapduino-pro-micro-ch32v006-elixir-button image
+          make CH32FUN="$CH32FUN_ROOT/ch32fun" BINARIES=1 \
+            START_BEAM_INPUT=build/elixir-examples/Elixir.BinaryPacket.beam \
+            IMAGE_BASENAME=AtomVM-uiapduino-pro-micro-ch32v006-elixir-binary-packet image
           make -B CH32FUN="$CH32FUN_ROOT/ch32fun" CONCURRENCY=1 TIMERS=1 \
             MAX_PROCESSES=2 C_STACK_RESERVE_BYTES=2048 \
             START_BEAM_INPUT=build/elixir-examples/Elixir.TimerBlink.beam \

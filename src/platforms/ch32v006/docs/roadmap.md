@@ -19,7 +19,7 @@ limitations. Status below was reviewed on 2026-09-08.
 | 28-bit integer arithmetic | deterministic `overflow`/`badarith`, host checks, and board boundary acceptance | preserve regression coverage |
 | Two same-module processes and spawn/send/receive | stable opt-in for `MAX_PROCESSES=2`, timers enabled, and a 2,048-byte stack reserve; board tests include allocation recovery, 256 child lifecycles, and a combined LED application | preserve evidence and measure each application |
 | Receive timeouts | stable in the same opt-in profile; board tests include timer/message OOM, 256 cycles, accelerated rollover, a natural two-wrap production-timing soak, and a combined LED application | preserve evidence and measure each application |
-| Byte-integer binary construction/exact matching | experimental; board tests including allocation failure | application use within the narrow subset and memory budget |
+| Byte-integer binary construction/exact matching | experimental; board tests including allocation failure and an Elixir packet application | explicit promotion review under ADR 0005 |
 | GPIO edge polling | build checks | rising/falling edges and pending-flag clearing |
 | UART1 | build checks | PD5/PD6 loopback, no-data and error behavior |
 | ADC | board smoke test | known-voltage measurements on PA2/A0 |
@@ -58,6 +58,12 @@ The natural production-timing soak also passed: a 1,432,000 ms receive timeout
 crossed two hardware-counter wraps without repositioning SysTick, verified four
 production tracking intervals, and delivered a completion message. Keep the
 accelerated and natural tests because they cover different failure modes.
+
+The byte-binary application gap is also closed: the minimal Elixir
+`BinaryPacket` example constructs and exactly matches a three-byte packet, and
+its `BINARIES=1` image passed on the board with 11,912 flash bytes free. Keep
+the tier experimental until its evidence is reviewed explicitly against ADR
+0005; adding an example alone does not promote it.
 
 ### 1. Keep useful resource margins
 

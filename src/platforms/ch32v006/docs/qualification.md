@@ -556,6 +556,33 @@ A separate host build with OTP 28.5.0.1 passed AOT, native-instruction, ABI, and
 flash checks at 62,164 bytes (1,324 free). That image was not flashed; the board
 result above belongs to the OTP 27 image.
 
+## Elixir byte-binary application — 2026-09-08
+
+The fixture-free `BinaryPacket` example constructs a three-byte packet from
+runtime function arguments and asserts its exact contents. This exercises the
+Elixir-to-BEAM-to-RV32E path for byte-binary construction and matching rather
+than adding another synthetic runtime operation.
+
+The image was built from AtomVM `c2c2b15bf86be1a0582b20a903432051f9b82577`
+with the example, documentation, and CI integration uncommitted. The Elixir
+source was compiled with Elixir 1.19.5 / OTP 28.5.0.1; AOT and firmware were
+built with OTP 27 / ERTS 15.2.7, GCC 14.2.0, and clean ch32fun
+`618bba58c615ed29dc99e6ea92d869c914b6a8c0`.
+
+- Configuration: `BINARIES=1`, default 1,536-byte C-stack reserve, no optional
+  peripherals, and no external wiring.
+- Image: `AtomVM-uiapduino-pro-micro-ch32v006-elixir-binary-packet.bin`;
+  51,576 bytes, leaving 11,912 flash bytes.
+- SHA-256:
+  `4304acb894379a88fb364d61c22edaf21941ef2ab26f122868adc72fed4dd23d`.
+- Completion condition: `AVM CH32V006 boot` followed by `ok` within a 12-second
+  monitor capture; the board produced both lines.
+
+This non-instrumented application result complements the byte-binary and
+binary-allocation-failure self-tests recorded below. It does not add fresh
+allocator or C-stack measurements and is therefore application evidence, not
+an implicit promotion of the experimental binary tier.
+
 ## Host build measurements — 2026-09-08
 
 Representative self-test image sizes:

@@ -3,11 +3,13 @@
 - `Blink.ex` toggles the onboard PC3 LED every 500 ms.
 - `Button.ex` lights PC3 while PA0/D0 is connected to GND. PA0 uses its
   internal pull-up, so a push button needs no external resistor.
+- `BinaryPacket.ex` constructs and verifies a three-byte packet. It exercises
+  the optional byte-binary profile without external wiring.
 - `TimerBlink.ex` uses two processes, messages, and receive timeouts to blink
   PC3 eight times. It needs the qualified two-process timer profile.
 
 `Blink.ex` and `Button.ex` use the blocking `:ch32v006.delay_ms/1` helper.
-`TimerBlink.ex` exercises scheduler-aware timing instead. All three target the
+`TimerBlink.ex` exercises scheduler-aware timing instead. All four target the
 one-module constrained runtime. For tool setup, firmware creation, flashing,
 and monitoring, follow the platform
 [getting-started guide](../../../src/platforms/ch32v006/docs/getting-started.md).
@@ -31,3 +33,7 @@ command:
 ```sh
 CONCURRENCY=1 TIMERS=1 MAX_PROCESSES=2 C_STACK_RESERVE_BYTES=2048
 ```
+
+For `BinaryPacket.ex`, compile that module instead and add `BINARIES=1` to the
+`make` command. A successful run prints `ok` and changes to the short success
+blink pattern.

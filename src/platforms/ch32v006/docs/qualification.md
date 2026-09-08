@@ -243,6 +243,10 @@ to create a 64-byte result, fills it with values 0 through 63, and returns it
 through the native/BEAM boundary. A second NIF verifies that it remains a heap
 binary with the expected size and every byte intact.
 
+The current test also copies that input after a forced garbage collection and
+verifies both values. This covers the rooted allocate-while-input-is-live path
+used by SPI transfer without requiring an electrical bus fixture.
+
 The image was built from AtomVM `23608c6f`, with this change uncommitted, and
 clean ch32fun `618bba58c615ed29dc99e6ea92d869c914b6a8c0`. Toolchain: GCC
 14.2.0 and OTP 27 / ERTS 15.2.7. Options: `PERIPHERALS=i2c`, default runtime,
@@ -267,9 +271,36 @@ AtomVM C stack peak: 660/1432 bytes
 ok
 ```
 
-The final `ok` includes the production stack-guard check. This verifies the
-bounded binary representation and native boundary; it does not force a GC or
-qualify I2C/SPI electrical transfers and their failure paths.
+The historical final `ok` above includes the production stack-guard check. It
+verified the bounded binary representation and native boundary before the
+forced-GC copy was added; the renewed result is recorded below. Neither run
+qualifies I2C/SPI electrical transfers and their failure paths.
+
+The forced-GC version passed on the board on 2026-09-08 with both the local OTP
+27 build and the OTP 28 build used by CI. Both were built from AtomVM
+`c2c2b15bf86be1a0582b20a903432051f9b82577` with the test and related
+documentation uncommitted, clean ch32fun
+`618bba58c615ed29dc99e6ea92d869c914b6a8c0`, and GCC 14.2.0. Each image was
+50,252 bytes and left 13,236 flash bytes. Their SHA-256 values were
+`746251da0336c57c37301fbac5c619ab3748aeef6ab56e9e5e12532e4444a5b0` for OTP
+27 / ERTS 15.2.7 and
+`9a6e111d0b43e9544eabd62dfa6ce1c80d91f0ddc037d280433cc1a48bc3a664` for OTP
+28.5.0.1 / ERTS 16.4.0.1.
+
+```text
+AVM CH32V006 boot
+SysTick time ok
+RV32E ABI ok
+AtomVM self-test: passed
+AtomVM heap: 4216/6224 bytes, peak 4392
+AtomVM process heap: 52 words, 14 free
+AtomVM C stack peak: 660/1536 bytes
+ok
+```
+
+The renewed workload retained 1,832 allocator bytes above peak and 876 bytes
+of measured C-stack headroom. Its forced collection is test-only; production
+SPI transfer uses ordinary allocation pressure but the same rooted helper.
 
 With the same source, build options, GCC, and OTP 27, the I2C image decreased
 from 62,456 to 62,220 bytes. The directly comparable OTP 28 measurement

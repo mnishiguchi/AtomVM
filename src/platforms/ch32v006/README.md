@@ -155,8 +155,9 @@ Host-side AOT validators and negative-test helpers live under `tools/`.
 
 `io-binary-image` verifies the bounded 64-byte heap-binary representation used
 for I2C and SPI results without external wiring. It checks the size and every
-byte after the value crosses the NIF/BEAM boundary. This target does not qualify
-an electrical bus transfer.
+byte after the value crosses the NIF/BEAM boundary, then copies it across a
+forced garbage collection to cover the rooted SPI-transfer allocation path.
+This target does not qualify an electrical bus transfer.
 
 `concurrency-memory-image` uses the 2,048-byte C-stack reserve used by the
 default memory-pressure acceptance image, leaving less SRAM for process heaps.

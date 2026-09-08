@@ -9,9 +9,10 @@
 
 start() ->
     Binary = ch32v006:io_binary_probe(),
+    Copy = ch32v006:io_binary_copy(Binary),
     Result =
-        case ch32v006:io_binary_verify(Binary) of
-            true -> passed;
-            false -> failed
+        case {ch32v006:io_binary_verify(Binary), ch32v006:io_binary_verify(Copy)} of
+            {true, true} -> passed;
+            _ -> failed
         end,
     ch32v006:report(Result).

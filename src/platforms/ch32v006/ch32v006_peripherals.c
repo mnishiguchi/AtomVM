@@ -154,8 +154,32 @@ static term nif_io_binary_verify(Context *ctx, int argc, term argv[])
     return TRUE_ATOM;
 }
 
+static term nif_io_binary_copy(Context *ctx, int argc, term argv[])
+{
+    if (argc != 1 || !term_is_binary(argv[0])) {
+        return term_invalid_term();
+    }
+
+    size_t size = term_binary_size(argv[0]);
+    term source = argv[0];
+    if (memory_ensure_free_with_roots(ctx, 0, 1, &source, MEMORY_FORCE_SHRINK) != MEMORY_GC_OK) {
+        return term_invalid_term();
+    }
+
+    uint8_t *destination;
+    term binary = make_binary_with_roots(ctx, size, &destination, 1, &source);
+    if (term_is_invalid_term(binary)) {
+        return binary;
+    }
+
+    const uint8_t *data = (const uint8_t *) term_binary_data(source);
+    memcpy(destination, data, size);
+    return binary;
+}
+
 DEFINE_NIF(io_binary_probe);
 DEFINE_NIF(io_binary_verify);
+DEFINE_NIF(io_binary_copy);
 #endif
 
 #ifdef AVM_CH32V006_UART
@@ -966,6 +990,9 @@ const struct Nif *ch32v006_peripherals_get_nif(const char *nifname)
     }
     if (strcmp("ch32v006:io_binary_verify/1", nifname) == 0) {
         return &io_binary_verify_nif;
+    }
+    if (strcmp("ch32v006:io_binary_copy/1", nifname) == 0) {
+        return &io_binary_copy_nif;
     }
 #endif
 #ifdef AVM_CH32V006_UART

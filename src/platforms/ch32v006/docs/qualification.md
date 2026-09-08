@@ -675,9 +675,12 @@ It reported 4,312/6,224 allocator bytes with the same peak, 25 process-heap
 words with 17 free, and a 660/1,536-byte C-stack peak.
 
 The complete OTP 28 `qualification-images` matrix was rebuilt successfully
-after adding explicit AOT rejection for non-byte and variable-sized binary
-segments. This covered all platform image profiles as well as the positive and
-negative host gates; no new build failures were observed.
+from clean AtomVM commit `a93651654ac9d6347536a9116ad29eeca05a212d`.
+All 29 newly generated image build records identify that commit and a clean
+AtomVM tree. The byte-binary and allocator-fault image hashes remained the
+values recorded above, so the physical-board results apply to those exact
+binaries. The matrix covered every platform image profile as well as the
+positive and negative host gates; no new build failures were observed.
 
 ## Host build measurements — 2026-09-08
 

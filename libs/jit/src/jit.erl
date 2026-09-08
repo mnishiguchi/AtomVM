@@ -2379,6 +2379,7 @@ first_pass(
             AccRest4 = skip_compact_term(AccRest3),
             {AccMSt1, Src, AccRest5} = decode_compact_term(AccRest4, MMod, AccMSt0, AccState0),
             {AccMSt2, Size, AccRest6} = decode_compact_term(AccRest5, MMod, AccMSt1, AccState0),
+            ok = validate_bs_create_bin_segment(MMod, AccMSt2, AtomType, SegmentUnit, Size),
             {AccMSt3, AccLiteralSize1, AccSizeReg1, AccState1} = first_pass_bs_create_bin_compute_size(
                 AtomType,
                 Src,
@@ -2707,6 +2708,12 @@ validate_bif(MMod, MSt, MFA) ->
 validate_external_call(MMod, MSt, MFA) ->
     case erlang:function_exported(MMod, validate_external_call, 2) of
         true -> MMod:validate_external_call(MSt, MFA);
+        false -> ok
+    end.
+
+validate_bs_create_bin_segment(MMod, MSt, AtomType, SegmentUnit, Size) ->
+    case erlang:function_exported(MMod, validate_bs_create_bin_segment, 4) of
+        true -> MMod:validate_bs_create_bin_segment(MSt, AtomType, SegmentUnit, Size);
         false -> ok
     end.
 
@@ -4842,6 +4849,11 @@ decode_compile_time_literal(<<?COMPACT_EXTENDED_LITERAL, Rest0/binary>>, #state{
     LiteralTerm = Resolver(LiteralIndex),
     {LiteralTerm, Rest1}.
 
+decode_flags_list(?TERM_NIL, _MMod, MSt) ->
+    % decode_compact_term represents the common empty flags list as the AtomVM
+    % nil term. Keep it compile-time here instead of requiring the runtime
+    % flags decoder.
+    {MSt, 0};
 decode_flags_list(L, _MMod, MSt) when is_list(L) ->
     % compile time decoding
     Value = decode_flags_list0(L, 0),

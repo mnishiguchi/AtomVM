@@ -111,8 +111,8 @@ Adding another operation is therefore a platform-support decision, not merely
 a registry change. It must fit the flash and SRAM budgets and be covered by
 host and physical-board validation.
 
-The stable opt-in two-process timer profile and experimental byte-binary tier
-extend this baseline as described under
+The stable opt-in two-process timer and byte-binary profiles extend this
+baseline as described under
 [optional capability tiers](#optional-capability-tiers).
 
 ## Firmware model
@@ -219,11 +219,11 @@ and byte binaries, so firmware cannot silently load code compiled for an absent
 helper. Peripheral drivers are selected independently through `PERIPHERALS`;
 unused drivers are removed at link time.
 
-Binary support is intentionally limited to byte-integer construction and exact
-matching. Sub-binaries currently exceed the RV32E backend's temporary-register
-budget for the acceptance workload and remain an AOT error. Timers require the
-concurrency tier. The current binary tier is separate from concurrency while
-their combined flash and SRAM cost is evaluated.
+Binary support is intentionally limited to fixed-width 8-bit integer
+construction and exact matching. Non-integer segment values raise `badarg`.
+Non-byte and variable-sized segments, binary copying/appending, UTF segments,
+and sub-binaries remain deterministic AOT errors. Timers require the
+concurrency tier.
 
 The exact two-process timer configuration promoted by
 [ADR 0006](adr/0006-promote-two-process-timer-profile.md) is a stable opt-in
@@ -235,6 +235,13 @@ constrained local-process semantics; linked spawning, registered names, ports,
 aliases, distributed PIDs, and process timer APIs remain unsupported. Other
 process limits, stack reserves, and capability combinations remain separate
 configurations.
+
+The exact single-process byte-binary configuration promoted by
+[ADR 0007](adr/0007-promote-byte-binary-profile.md) is also a stable opt-in
+profile. It uses the default 1,536-byte C-stack reserve with `BINARIES=1`, no
+concurrency or timers, and no optional peripherals. Other bitstring operations
+and combinations with additional capability tiers remain unsupported or
+unqualified.
 
 GPIO interrupts, UART, ADC, I2C, SPI, and PWM now have independently buildable
 acceptance images. ADC and PWM also have board smoke-test results; full

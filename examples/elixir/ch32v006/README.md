@@ -4,7 +4,7 @@
 - `Button.ex` lights PC3 while PA0/D0 is connected to GND. PA0 uses its
   internal pull-up, so a push button needs no external resistor.
 - `BinaryPacket.ex` constructs and verifies a three-byte packet. It exercises
-  the optional byte-binary profile without external wiring.
+  the stable opt-in byte-binary profile without external wiring.
 - `TimerBlink.ex` uses two processes, messages, and receive timeouts to blink
   PC3 eight times. It needs the qualified two-process timer profile.
 

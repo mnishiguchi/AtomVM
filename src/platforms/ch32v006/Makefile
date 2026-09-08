@@ -220,7 +220,8 @@ JIT_ERLANG_DEPENDENCIES := \
     $(ATOMVM_ROOT)/libs/jit/src/compact_term.hrl \
     $(ATOMVM_ROOT)/libs/jit/src/jit_backend_regs_impl.hrl \
     $(ATOMVM_ROOT)/libs/jit/src/jit_riscv_impl.hrl \
-    $(ATOMVM_ROOT)/libs/jit/src/primitives.hrl
+    $(ATOMVM_ROOT)/libs/jit/src/primitives.hrl \
+    $(ATOMVM_ROOT)/libs/jit/src/term.hrl
 
 $(HOST_JIT_STAMP): $(JIT_ERLANG_DEPENDENCIES)
 	mkdir -p $(HOST_JIT_DIR)
@@ -238,6 +239,9 @@ ifneq ($(strip $(START_BEAM_INPUT)),)
 $(PRECOMPILED_BEAM): $(START_BEAM_INPUT) $(HOST_JIT_STAMP)
 	mkdir -p $(BUILD_DIR)
 	cp $< $@
+ifneq ($(filter $(START_NAME),ch32v006_binary_self_test Elixir.BinaryPacket),)
+	erl -noshell -eval '{beam_file, _, _, _, _, Functions} = beam_disasm:file("$@"), Instructions = lists:append([Is || {function, _, _, _, Is} <- Functions]), true = lists:any(fun(I) -> is_tuple(I) andalso element(1, I) =:= bs_create_bin end, Instructions), halt().'
+endif
 	erl -pa $(HOST_JIT_DIR) -noshell \
 	    -eval 'jit_precompile:compile("$(AOT_TARGET)", "$(BUILD_DIR)", false, "$@"), halt().'
 	erl -pa $(HOST_JIT_DIR) -noshell \
@@ -246,6 +250,9 @@ else
 $(PRECOMPILED_BEAM): $(START_SOURCE) $(HOST_JIT_STAMP)
 	mkdir -p $(BUILD_DIR)
 	erlc +debug_info -o $(BUILD_DIR) $<
+ifeq ($(START_NAME),ch32v006_binary_self_test)
+	erl -noshell -eval '{beam_file, _, _, _, _, Functions} = beam_disasm:file("$(COMPILED_BEAM)"), Instructions = lists:append([Is || {function, _, _, _, Is} <- Functions]), true = lists:any(fun(I) -> is_tuple(I) andalso element(1, I) =:= bs_create_bin end, Instructions), halt().'
+endif
 ifeq ($(START_NAME),ch32v006_arithmetic_boundary_self_test)
 	erl -noshell -eval '{beam_file, _, _, _, _, Functions} = beam_disasm:file("$(COMPILED_BEAM)"), Instructions = lists:append([Is || {function, _, _, _, Is} <- Functions]), Ops = [Op || {gc_bif, Op, _, _, _, _} <- Instructions], Expected = [list_to_atom(S) || S <- ["+", "-", "*", "div", "rem"]], true = lists:all(fun(Op) -> lists:member(Op, Ops) end, Expected), halt().'
 endif
@@ -506,7 +513,7 @@ help:
 	@echo "  process-stress-image  Build the 256-child process cleanup stress image"
 	@echo "  process-oom-stress-image  Build repeated spawn-OOM recovery stress image"
 	@echo "  timer-oom-image    Build the timer allocation-failure image"
-	@echo "  binary-image       Build the experimental byte-binary acceptance image"
+	@echo "  binary-image       Build the byte-binary profile acceptance image"
 	@echo "  binary-oom-image   Build the binary-allocation failure acceptance image"
 	@echo "  io-binary-image    Build the bounded peripheral-result binary acceptance image"
 	@echo "  peripheral-images  Build each experimental peripheral image independently"

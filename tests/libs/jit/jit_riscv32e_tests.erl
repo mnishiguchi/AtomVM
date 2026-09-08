@@ -11,6 +11,7 @@
 -endif.
 
 -include("jit/include/jit.hrl").
+-include("jit/src/term.hrl").
 
 -define(VARIANT, (?JIT_VARIANT_PIC bor ?JIT_VARIANT_RV32E)).
 -define(MINIMAL_VARIANT, (?VARIANT bor ?JIT_VARIANT_MINIMAL)).
@@ -122,18 +123,38 @@ minimal_binaries_accepts_selected_primitives_test() ->
         fun(Primitive) ->
             {_NextState, _Result} = jit_riscv32e:call_primitive(State, Primitive, [ctx])
         end,
-        [44, 45, 46, 52, 57]
+        [44, 45, 46, 52, 57, 58]
     ),
     ?assertError(
         {unsupported_minimal_runtime_primitive, 48},
         jit_riscv32e:call_primitive(State, 48, [ctx])
     ).
 
+minimal_binaries_validate_construction_segments_test() ->
+    State = jit_riscv32e:new(
+        ?MINIMAL_BINARIES_VARIANT, jit_stream_binary, jit_stream_binary:new(0)
+    ),
+    ByteSize = (8 bsl 4) bor ?TERM_INTEGER_TAG,
+    OneByte = (1 bsl 4) bor ?TERM_INTEGER_TAG,
+    NibbleSize = (4 bsl 4) bor ?TERM_INTEGER_TAG,
+    ok = jit_riscv32e:validate_bs_create_bin_segment(State, integer, 1, ByteSize),
+    ok = jit_riscv32e:validate_bs_create_bin_segment(State, string, 8, OneByte),
+    ?assertError(
+        {unsupported_minimal_binary_segment, non_byte_integer},
+        jit_riscv32e:validate_bs_create_bin_segment(State, integer, 1, NibbleSize)
+    ),
+    ?assertError(
+        {unsupported_minimal_binary_segment, variable_size_integer},
+        jit_riscv32e:validate_bs_create_bin_segment(State, integer, 8, {x_reg, 1})
+    ).
+
 regular_rv32e_keeps_complete_native_interface_test() ->
     State = jit_riscv32e:new(?VARIANT, jit_stream_binary, jit_stream_binary:new(0)),
     {_, _} = jit_riscv32e:call_primitive(State, 17, [ctx, jit_state]),
     ok = jit_riscv32e:validate_bif(State, {erlang, self, 0}),
-    ok = jit_riscv32e:validate_external_call(State, {erlang, apply, 3}).
+    ok = jit_riscv32e:validate_external_call(State, {erlang, apply, 3}),
+    NibbleSize = (4 bsl 4) bor ?TERM_INTEGER_TAG,
+    ok = jit_riscv32e:validate_bs_create_bin_segment(State, integer, 1, NibbleSize).
 
 call_primitive_test() ->
     State0 = jit_riscv32e:new(?VARIANT, jit_stream_binary, jit_stream_binary:new(0)),

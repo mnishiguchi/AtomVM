@@ -29,6 +29,32 @@ run(FixtureDir, BuildDir) ->
         FixtureDir,
         BuildDir
     ),
+    rejects(
+        {"binary_copy", {unsupported_minimal_binary_segment, binary}},
+        "riscv32e+minimal+binaries",
+        FixtureDir,
+        BuildDir
+    ),
+    rejects(
+        {"binary_utf8", {unsupported_minimal_binary_segment, utf8}},
+        "riscv32e+minimal+binaries",
+        FixtureDir,
+        BuildDir
+    ),
+    rejects(
+        {"binary_variable_size",
+            {unsupported_minimal_binary_segment, variable_size_integer}},
+        "riscv32e+minimal+binaries",
+        FixtureDir,
+        BuildDir
+    ),
+    rejects(
+        {"binary_non_byte",
+            {unsupported_minimal_binary_segment, non_byte_integer}},
+        "riscv32e+minimal+binaries",
+        FixtureDir,
+        BuildDir
+    ),
     io:format("CH32V006 unsupported-feature tests passed~n"),
     ok.
 

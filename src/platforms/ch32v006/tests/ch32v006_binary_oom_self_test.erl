@@ -13,6 +13,10 @@ start() ->
         try ch32v006:binary_allocation_probe() of
             _ -> allocation_succeeded
         catch
-            error:out_of_memory -> passed
+            error:out_of_memory -> allocation_recovery()
         end,
     ch32v006:report(Result).
+
+allocation_recovery() ->
+    _Binary = ch32v006:binary_allocation_probe(),
+    passed.

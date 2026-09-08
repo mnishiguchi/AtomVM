@@ -581,7 +581,103 @@ built with OTP 27 / ERTS 15.2.7, GCC 14.2.0, and clean ch32fun
 This non-instrumented application result complements the byte-binary and
 binary-allocation-failure self-tests recorded below. It does not add fresh
 allocator or C-stack measurements and is therefore application evidence, not
-an implicit promotion of the experimental binary tier.
+by itself promotion evidence.
+
+### Final non-constant-folded rerun — 2026-09-09
+
+The finalized `BinaryPacket` derives the packet's first byte from
+`atomvm:platform/0`, preventing the three-byte construction from being
+constant-folded while keeping the example fixture-free. The source SHA-256 was
+`8775cc54134d4d93197064830cb2b59e5485b82634389abf2f93bc3c4a729548`.
+Its Elixir 1.19.5 / OTP 28.5.0.1 BEAM SHA-256 was
+`c46c03700c43a53f6858ee6538204ab8b76d755fc63a8168b277ca6b221960a5`.
+
+The final staged tree on AtomVM
+`b385a0a2ab7c8641db695a7f62b4cc3729bd53b5`, with GCC 14.2.0 and clean
+ch32fun `618bba58c615ed29dc99e6ea92d869c914b6a8c0`, produced 2,984 bytes of
+validated native code. The 52,780-byte image left 10,708 flash bytes and had
+SHA-256
+`eec510447b9e5560c6127b3da1fb9c81078271ff8912d9b15965cee788d40284`.
+The physical board again printed `AVM CH32V006 boot` followed by `ok` within
+the 12-second acceptance window.
+
+## Byte-binary profile promotion — 2026-09-08
+
+The strengthened `binary-image` constructs and exactly matches fixed-width
+byte binaries, checks the boundary value 255 and mismatch behavior, then retains
+dynamically allocated byte binaries until process-heap allocation raises
+catchable `out_of_memory`. Successful reporting after the exception verifies
+controlled recovery. No external wiring was used.
+
+The exact profile was `BINARIES=1`, `CONCURRENCY=0`, `TIMERS=0`, no optional
+peripherals, and a 1,536-byte C-stack reserve. Both board runs reported:
+
+```text
+AVM CH32V006 boot
+SysTick time ok
+RV32E ABI ok
+AtomVM self-test: passed
+AtomVM heap: 4320/6232 bytes, peak 5248
+AtomVM process heap: 44 words, 27 free
+AtomVM C stack peak: 948/1536 bytes
+ok
+```
+
+Peak allocator headroom was 984 bytes and measured C-stack headroom was 588
+bytes. The OTP 27 image was 55,424 bytes (8,064 free), with SHA-256
+`aebc0a428a8a60f45200b1c50edc6a98b2e001fcbd417f1c3a103173f6172905`.
+The OTP 28 image was 55,432 bytes (8,056 free), with SHA-256
+`9de2c07500afc4f57816cbe096557637c81e95eba5524c769a26aee9915913a2`.
+Both used GCC 14.2.0 and clean ch32fun
+`618bba58c615ed29dc99e6ea92d869c914b6a8c0`; the test and negative-validation
+changes were uncommitted on AtomVM `b385a0a2ab7c8641db695a7f62b4cc3729bd53b5`.
+
+Host negative tests additionally reject non-byte and variable-sized segments,
+binary copying/appending, UTF segments, and sub-binaries under the binary AOT
+target. Together with the Elixir packet application above, this evidence
+promotes only the bounded configuration in
+[ADR 0007](adr/0007-promote-byte-binary-profile.md), not general binary support
+or combinations with other capability tiers.
+
+### OTP 27 and OTP 28 requalification — 2026-09-09
+
+The current staged byte-binary workload was rebuilt and rerun after its retained
+binary allocation loop and AOT guards were finalized. It passed on the same
+board without external wiring:
+
+```text
+AVM CH32V006 boot
+SysTick time ok
+RV32E ABI ok
+AtomVM self-test: passed
+AtomVM heap: 4712/6232 bytes, peak 5192
+AtomVM process heap: 137 words, 6 free
+AtomVM C stack peak: 948/1536 bytes
+ok
+```
+
+The OTP 27 / ERTS 15.2.7 image was 57,092 bytes (6,396 free), with SHA-256
+`7ba96279f2afc71f35916d8963113a0a89014a9ed17e8117b77c36532ae69aa8`.
+The OTP 28 / ERTS 16.4.0.1 image was 57,100 bytes (6,388 free), with SHA-256
+`55418f273cf65c9a27bcded62af75d2f20a3fab8f4c888e1298a4247354c1610`.
+Both reported the output above. Peak allocator headroom was 1,040 bytes and
+measured C-stack headroom was 588 bytes. Both used GCC 14.2.0 and clean ch32fun
+`618bba58c615ed29dc99e6ea92d869c914b6a8c0`; the byte-binary promotion changes
+were staged on AtomVM `b385a0a2ab7c8641db695a7f62b4cc3729bd53b5`.
+
+The separate OTP 28 allocator fault-injection image was also strengthened and
+rerun. Its expected 64-byte ref-counted-binary allocation failure was catchable,
+a second 64-byte allocation succeeded, the self-test passed, and execution
+recovered to print `ok`. The 51,668-byte image left 11,820 bytes of flash and
+had SHA-256
+`400a4e51793b81645b115013c098f9e42915890cb6637f9b3e7b51731af82e61`.
+It reported 4,312/6,224 allocator bytes with the same peak, 25 process-heap
+words with 17 free, and a 660/1,536-byte C-stack peak.
+
+The complete OTP 28 `qualification-images` matrix was rebuilt successfully
+after adding explicit AOT rejection for non-byte and variable-sized binary
+segments. This covered all platform image profiles as well as the positive and
+negative host gates; no new build failures were observed.
 
 ## Host build measurements — 2026-09-08
 

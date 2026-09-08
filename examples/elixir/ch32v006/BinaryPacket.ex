@@ -6,7 +6,13 @@
 
 defmodule BinaryPacket do
   def start do
-    <<0x12, 0x34, 0x46>> = packet(0x12, 0x34)
+    first =
+      case :atomvm.platform() do
+        :ch32v006 -> 0x12
+        _ -> 0
+      end
+
+    <<0x12, 0x34, 0x46>> = packet(first, 0x34)
     :ok
   end
 

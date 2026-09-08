@@ -2118,6 +2118,7 @@ const ModuleNativeInterface module_native_interface = {
     .bitstring_extract_integer = jit_bitstring_extract_integer,
     .term_create_empty_binary = jit_term_create_empty_binary,
     .bitstring_insert_integer = jit_bitstring_insert_integer,
+    .bitstring_copy_module_str = jit_bitstring_copy_module_str,
 #endif
 };
 #else

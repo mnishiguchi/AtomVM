@@ -11,6 +11,7 @@ in [design.md](../design.md). The [roadmap](../roadmap.md) sets priorities;
 - [ADR 0004: Add capabilities as explicit build-time tiers](0004-explicit-capability-tiers.md)
 - [ADR 0005: Qualify configurations with reproducible evidence](0005-evidence-based-qualification.md)
 - [ADR 0006: Promote the two-process timer profile](0006-promote-two-process-timer-profile.md)
+- [ADR 0007: Promote the byte-binary profile](0007-promote-byte-binary-profile.md)
 
 Add an ADR when changing the firmware model, runtime boundary, capability ABI,
 or qualification policy. Record context, decision, and consequences; keep exact

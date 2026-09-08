@@ -135,8 +135,9 @@ Erlang-only. No wiring is needed; require `AtomVM self-test: passed` followed by
 `ok` within a 10-second monitor capture for each image.
 
 These targets pass AOT, native-instruction, RV32E ABI, and flash-size checks.
-The exact two-process timer profile described below is hardware-qualified;
-binary and peripheral capabilities remain experimental. `concurrency-oom-image`
+The exact two-process timer and byte-binary profiles described below are
+hardware-qualified; peripheral capabilities remain experimental.
+`concurrency-oom-image`
 arms a test-only allocator fault immediately
 before `spawn/3` and expects a catchable `error:out_of_memory` when
 `context_new()` cannot allocate the child. `concurrency-send-oom-image` keeps
@@ -249,9 +250,25 @@ block both processes while they access hardware. See
 [ADR 0006](docs/adr/0006-promote-two-process-timer-profile.md) for the bounded
 contract.
 
-Experiments add byte-sized binary construction/matching, GPIO edge polling,
-UART, ADC, I2C, SPI, and PWM. The peripheral APIs are small direct NIFs, not
-the port-based APIs used by larger AtomVM platforms.
+A separate stable opt-in profile adds bounded byte binaries:
+
+```sh
+make CH32FUN=/path/to/ch32fun/ch32fun \
+  BINARIES=1 START_SOURCE=/path/to/app.erl image
+```
+
+It supports fixed-width 8-bit integer construction and exact matching of those
+binaries. Mismatch, catchable `badarg` for non-integer segment values, catchable
+allocation failure, and allocation after an injected failure are qualified.
+Non-byte and variable-sized segments, copying/appending, UTF segments,
+sub-binaries, floats, and general bitstring support remain deterministic AOT
+errors. The qualified configuration uses one process, no timers or optional
+peripherals, and the default 1,536-byte stack reserve. See
+[ADR 0007](docs/adr/0007-promote-byte-binary-profile.md).
+
+Experiments add GPIO edge polling, UART, ADC, I2C, SPI, and PWM. The peripheral
+APIs are small direct NIFs, not the port-based APIs used by larger AtomVM
+platforms.
 
 Experimental driver pinout and acceptance wiring:
 
@@ -285,7 +302,7 @@ I2C and SPI result buffers stay on the process heap even at 64 bytes, avoiding
 separate ref-counted allocations on this constrained target.
 Select one or more drivers with `PERIPHERALS="uart adc"`. Select byte binary
 construction/matching with `BINARIES=1`; timers require `CONCURRENCY=1
-TIMERS=1`. The binary and concurrency experiments cannot yet be combined.
+TIMERS=1`. The binary and concurrency profiles cannot currently be combined.
 
 The allocator reserves 1,536 bytes for the C stack, protects that boundary
 with a production canary, and accepts an application-specific override:

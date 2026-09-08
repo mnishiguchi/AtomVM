@@ -42,6 +42,7 @@
     call_primitive_with_cp/3,
     validate_bif/2,
     validate_external_call/2,
+    validate_bs_create_bin_segment/4,
     return_if_not_equal_to_ctx/2,
     jump_to_label/2,
     jump_to_continuation/2,
@@ -374,7 +375,8 @@ validate_minimal_primitive(Variant, Primitive) when
         Primitive =:= ?PRIM_TERM_ALLOC_BIN_MATCH_STATE orelse
         Primitive =:= ?PRIM_BITSTRING_EXTRACT_INTEGER orelse
         Primitive =:= ?PRIM_TERM_CREATE_EMPTY_BINARY orelse
-        Primitive =:= ?PRIM_BITSTRING_INSERT_INTEGER)
+        Primitive =:= ?PRIM_BITSTRING_INSERT_INTEGER orelse
+        Primitive =:= ?PRIM_BITSTRING_COPY_MODULE_STR)
 ->
     ok;
 validate_minimal_primitive(_Variant, Primitive) ->
@@ -431,6 +433,46 @@ validate_external_call(
     error({unsupported_minimal_runtime_external_call, MFA});
 validate_external_call(_State, _MFA) ->
     ok.
+
+validate_bs_create_bin_segment(
+    #state{variant = Variant}, AtomType, SegmentUnit, Size
+) when
+    Variant band ?JIT_VARIANT_MINIMAL =/= 0,
+    Variant band ?JIT_VARIANT_MINIMAL_BINARIES =/= 0
+->
+    validate_minimal_binary_segment(AtomType, SegmentUnit, Size);
+validate_bs_create_bin_segment(_State, _AtomType, _SegmentUnit, _Size) ->
+    ok.
+
+validate_minimal_binary_segment(integer, SegmentUnit, Size) ->
+    case compact_integer_value(Size) of
+        SegmentSize when is_integer(SegmentSize), SegmentSize * SegmentUnit =:= 8 ->
+            ok;
+        SegmentSize when is_integer(SegmentSize) ->
+            error({unsupported_minimal_binary_segment, non_byte_integer});
+        dynamic ->
+            error({unsupported_minimal_binary_segment, variable_size_integer})
+    end;
+validate_minimal_binary_segment(string, SegmentUnit, Size) ->
+    case compact_integer_value(Size) of
+        SegmentSize when
+            is_integer(SegmentSize),
+            SegmentSize > 0,
+            (SegmentSize * SegmentUnit) rem 8 =:= 0
+        ->
+            ok;
+        _ ->
+            error({unsupported_minimal_binary_segment, non_byte_string})
+    end;
+validate_minimal_binary_segment(AtomType, _SegmentUnit, _Size) ->
+    error({unsupported_minimal_binary_segment, AtomType}).
+
+compact_integer_value(Value) when
+    is_integer(Value), Value band ?TERM_IMMED_TAG_MASK =:= ?TERM_INTEGER_TAG
+->
+    Value bsr 4;
+compact_integer_value(_Value) ->
+    dynamic.
 
 -ifdef(JIT_RISCV32E).
 prepare_call_args(Args) ->

@@ -9,7 +9,7 @@ gaps and preserving resource margins before extending applications.
 The [platform README](../README.md) defines the supported API and build options.
 [ADRs](adr/README.md) record architectural decisions.
 [Qualification records](qualification.md) retain measured results and their
-limitations. Status below was reviewed on 2026-09-08.
+limitations. Status below was reviewed on 2026-09-09.
 
 ## Current capability boundary
 
@@ -19,7 +19,7 @@ limitations. Status below was reviewed on 2026-09-08.
 | 28-bit integer arithmetic | deterministic `overflow`/`badarith`, host checks, and board boundary acceptance | preserve regression coverage |
 | Two same-module processes and spawn/send/receive | stable opt-in for `MAX_PROCESSES=2`, timers enabled, and a 2,048-byte stack reserve; board tests include allocation recovery, 256 child lifecycles, and a combined LED application | preserve evidence and measure each application |
 | Receive timeouts | stable in the same opt-in profile; board tests include timer/message OOM, 256 cycles, accelerated rollover, a natural two-wrap production-timing soak, and a combined LED application | preserve evidence and measure each application |
-| Byte-integer binary construction/exact matching | experimental; board tests including allocation failure and an Elixir packet application | explicit promotion review under ADR 0005 |
+| Fixed-width byte-binary construction/exact matching | stable opt-in for `BINARIES=1`, no concurrency/timers/peripherals, and a 1,536-byte stack reserve; board tests include boundary values, controlled OOM, and an Elixir packet application | preserve evidence and measure each application |
 | GPIO edge polling | build checks | rising/falling edges and pending-flag clearing |
 | UART1 | build checks | PD5/PD6 loopback, no-data and error behavior |
 | ADC | board smoke test | known-voltage measurements on PA2/A0 |
@@ -59,11 +59,11 @@ crossed two hardware-counter wraps without repositioning SysTick, verified four
 production tracking intervals, and delivered a completion message. Keep the
 accelerated and natural tests because they cover different failure modes.
 
-The byte-binary application gap is also closed: the minimal Elixir
-`BinaryPacket` example constructs and exactly matches a three-byte packet, and
-its `BINARIES=1` image passed on the board with 11,912 flash bytes free. Keep
-the tier experimental until its evidence is reviewed explicitly against ADR
-0005; adding an example alone does not promote it.
+The bounded byte-binary profile has also been promoted under
+[ADR 0007](adr/0007-promote-byte-binary-profile.md). The minimal Elixir
+`BinaryPacket` example constructs and exactly matches a three-byte packet. The
+strengthened Erlang workload covers the byte boundary, mismatch behavior, and
+controlled process-heap exhaustion on OTP 27 and OTP 28 hardware images.
 
 ### 1. Keep useful resource margins
 
@@ -92,6 +92,19 @@ requiring evidence under ADR 0005.
 
 **Done continuously when:** relevant changes rebuild the matrix and renew the
 affected board evidence before the profile is described as qualified again.
+
+### 3. Preserve the stable opt-in byte-binary profile
+
+[ADR 0007](adr/0007-promote-byte-binary-profile.md) promotes only
+`BINARIES=1 CONCURRENCY=0 TIMERS=0 C_STACK_RESERVE_BYTES=1536` without optional
+peripherals. Keep positive construction/matching, boundary, mismatch, OOM,
+post-failure allocation, and negative AOT coverage. Treat broader bitstrings or
+another capability combination as a new configuration requiring evidence under
+ADR 0005.
+
+**Done continuously when:** relevant changes rebuild the binary checks and
+renew the affected board evidence before the profile is described as qualified
+again.
 
 ## Work requiring fixtures
 

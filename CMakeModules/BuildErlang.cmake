@@ -134,7 +134,11 @@ macro(pack_precompiled_archive avm_name)
             if(PACK_ARCHIVE_PRECOMPILED_MODULES)
                 set(_precompile_module_list "")
                 foreach(_mod IN LISTS PACK_ARCHIVE_PRECOMPILED_MODULES)
-                    string(REPLACE "@ARCH@" "${jit_target_arch}" _mod_resolved "${_mod}")
+                    if("${_mod}" STREQUAL "jit_@ARCH@_asm")
+                        set(_mod_resolved "jit_${jit_target_asm_arch}_asm")
+                    else()
+                        string(REPLACE "@ARCH@" "${jit_target_arch}" _mod_resolved "${_mod}")
+                    endif()
                     list(APPEND _precompile_module_list "${_mod_resolved}")
                 endforeach()
                 if("${jit_target_arch_variant}" MATCHES "thumb2")
@@ -429,12 +433,17 @@ macro(pack_runnable avm_name main)
     if(PACK_RUNNABLE_TARGETS AND (NOT AVM_DISABLE_JIT OR AVM_ENABLE_PRECOMPILED))
         foreach(jit_target_arch_variant IN LISTS PACK_RUNNABLE_TARGETS)
             string(REGEX REPLACE "\\+.*$" "" jit_target_arch "${jit_target_arch_variant}")
+            if(jit_target_arch STREQUAL "riscv32e")
+                set(jit_target_asm_arch "riscv32")
+            else()
+                set(jit_target_asm_arch "${jit_target_arch}")
+            endif()
             set(jit_compiler_modules
                 ${CMAKE_BINARY_DIR}/libs/jit/src/beams/jit.beam
                 ${CMAKE_BINARY_DIR}/libs/jit/src/beams/jit_precompile.beam
                 ${CMAKE_BINARY_DIR}/libs/jit/src/beams/jit_stream_binary.beam
                 ${CMAKE_BINARY_DIR}/libs/jit/src/beams/jit_${jit_target_arch}.beam
-                ${CMAKE_BINARY_DIR}/libs/jit/src/beams/jit_${jit_target_arch}_asm.beam
+                ${CMAKE_BINARY_DIR}/libs/jit/src/beams/jit_${jit_target_asm_arch}_asm.beam
             )
             if(NOT AVM_DISABLE_JIT_DWARF)
                 list(APPEND jit_compiler_modules ${CMAKE_BINARY_DIR}/libs/jit/src/beams/jit_dwarf.beam)

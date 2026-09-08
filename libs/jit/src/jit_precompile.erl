@@ -40,6 +40,10 @@ start() ->
 %%   "armv6m" -> {"armv6m", ?JIT_VARIANT_PIC}
 %%   "armv6m+float32" -> {"armv6m", ?JIT_VARIANT_PIC + ?JIT_VARIANT_FLOAT32}
 %%   "armv6m+thumb2" -> {"armv6m", ?JIT_VARIANT_PIC + ?JIT_VARIANT_THUMB2}
+%%   "riscv32e+minimal" -> {"riscv32e", ?JIT_VARIANT_PIC + ?JIT_VARIANT_MINIMAL}
+%%   "riscv32e+minimal+concurrency" -> constrained RV32E with process support
+%%   "riscv32e+minimal+concurrency+timers" -> adds receive timeouts
+%%   "riscv32e+minimal+binaries" -> adds bounded binary construction and matching
 %%   "x86_64" -> {"x86_64", ?JIT_VARIANT_PIC}
 parse_target(Target) ->
     case string:split(Target, "+", all) of
@@ -51,6 +55,10 @@ parse_target(Target) ->
                     case Variant of
                         "float32" -> Acc + ?JIT_VARIANT_FLOAT32;
                         "thumb2" -> Acc + ?JIT_VARIANT_THUMB2;
+                        "minimal" -> Acc + ?JIT_VARIANT_MINIMAL;
+                        "concurrency" -> Acc + ?JIT_VARIANT_MINIMAL_CONCURRENCY;
+                        "timers" -> Acc + ?JIT_VARIANT_MINIMAL_TIMERS;
+                        "binaries" -> Acc + ?JIT_VARIANT_MINIMAL_BINARIES;
                         _ -> error({unsupported_variant, Variant})
                     end
                 end,
@@ -62,6 +70,46 @@ parse_target(Target) ->
 
 compile(Target, Dir, Dwarf, Path) ->
     try
+        {BaseTarget, RequestedVariant0} = parse_target(Target),
+        case {BaseTarget, RequestedVariant0 band ?JIT_VARIANT_MINIMAL} of
+            {"riscv32e", _} -> ok;
+            {_, 0} -> ok;
+            _ -> error({unsupported_variant_for_target, minimal, BaseTarget})
+        end,
+        case RequestedVariant0 band ?JIT_VARIANT_MINIMAL_CONCURRENCY of
+            0 ->
+                ok;
+            _ when
+                BaseTarget =:= "riscv32e",
+                RequestedVariant0 band ?JIT_VARIANT_MINIMAL =/= 0
+            ->
+                ok;
+            _ ->
+                error({unsupported_variant_for_target, concurrency, BaseTarget})
+        end,
+        case RequestedVariant0 band ?JIT_VARIANT_MINIMAL_TIMERS of
+            0 ->
+                ok;
+            _ when
+                BaseTarget =:= "riscv32e",
+                RequestedVariant0 band ?JIT_VARIANT_MINIMAL =/= 0,
+                RequestedVariant0 band ?JIT_VARIANT_MINIMAL_CONCURRENCY =/= 0
+            ->
+                ok;
+            _ ->
+                error({unsupported_variant_for_target, timers, BaseTarget})
+        end,
+        case RequestedVariant0 band ?JIT_VARIANT_MINIMAL_BINARIES of
+            0 ->
+                ok;
+            _ when
+                BaseTarget =:= "riscv32e",
+                RequestedVariant0 band ?JIT_VARIANT_MINIMAL =/= 0
+            ->
+                ok;
+            _ ->
+                error({unsupported_variant_for_target, binaries, BaseTarget})
+        end,
         {ok, InitialBinary} = file:read_file(Path),
         {ok, Module, InitialChunks} = beam_lib:all_chunks(InitialBinary),
         FilteredChunks0 = lists:keydelete("avmN", 1, InitialChunks),
@@ -83,7 +131,12 @@ compile(Target, Dir, Dwarf, Path) ->
                             <<>>
                     end
             end,
-        LiteralResolver = literal_resolver(LiteralsChunk),
+        RawLiteralResolver = literal_resolver(LiteralsChunk),
+        LiteralResolver = fun(Index) ->
+            Term = RawLiteralResolver(Index),
+            ok = validate_minimal_literal(RequestedVariant0, Term),
+            Term
+        end,
 
         TypesChunk =
             case lists:keyfind("Type", 1, InitialChunks) of
@@ -116,7 +169,7 @@ compile(Target, Dir, Dwarf, Path) ->
         DebugInfoResolver =
             case lists:keyfind("DbgB", 1, InitialChunks) of
                 {"DbgB", DbgBChunk} ->
-                    DebugInfoMap = parse_dbgb_chunk(DbgBChunk, LiteralResolver, AtomResolver),
+                    DebugInfoMap = parse_dbgb_chunk(DbgBChunk, RawLiteralResolver, AtomResolver),
                     fun(Index) ->
                         case DebugInfoMap of
                             #{Index := VarMappings} -> VarMappings;
@@ -128,7 +181,6 @@ compile(Target, Dir, Dwarf, Path) ->
             end,
 
         % Parse target to extract arch and variant
-        {BaseTarget, RequestedVariant0} = parse_target(Target),
         RequestedVariant =
             case BaseTarget of
                 "riscv32e" -> RequestedVariant0 bor ?JIT_VARIANT_RV32E;
@@ -277,6 +329,44 @@ parse_literals_chunk0(0, <<>>, Acc) ->
 parse_literals_chunk0(N, <<TermSize:32, TermBin:TermSize/binary, Rest/binary>>, Acc) ->
     Term = binary_to_term(TermBin),
     parse_literals_chunk0(N - 1, Rest, [Term | Acc]).
+
+validate_minimal_literal(Variant, Term) ->
+    case Variant band ?JIT_VARIANT_MINIMAL of
+        0 ->
+            ok;
+        _ ->
+            validate_minimal_literal(Term)
+    end.
+
+validate_minimal_literal(Term) when is_atom(Term) ->
+    ok;
+% Elixir modules contain an exports_md5 binary in __info__/1. Loading an
+% opaque literal uses the linked module_load_literal helper and does not enable
+% binary construction, matching, or mutation instructions.
+validate_minimal_literal(Term) when is_binary(Term) ->
+    ok;
+validate_minimal_literal(Term) when
+    is_integer(Term), Term >= -(1 bsl 27), Term < (1 bsl 27)
+->
+    ok;
+validate_minimal_literal([]) ->
+    ok;
+validate_minimal_literal([Head | Tail]) ->
+    validate_minimal_literal(Head),
+    validate_minimal_literal(Tail);
+validate_minimal_literal(Term) when is_tuple(Term) ->
+    lists:foreach(fun validate_minimal_literal/1, tuple_to_list(Term));
+validate_minimal_literal(Term) ->
+    error({unsupported_minimal_runtime_literal, minimal_literal_type(Term)}).
+
+minimal_literal_type(Term) when is_float(Term) -> float;
+minimal_literal_type(Term) when is_function(Term) -> function;
+minimal_literal_type(Term) when is_integer(Term) -> big_integer;
+minimal_literal_type(Term) when is_map(Term) -> map;
+minimal_literal_type(Term) when is_pid(Term) -> pid;
+minimal_literal_type(Term) when is_port(Term) -> port;
+minimal_literal_type(Term) when is_reference(Term) -> reference;
+minimal_literal_type(_Term) -> unsupported.
 
 import_resolver(FunctionChunks, AtomResolver) ->
     ImportedFunctions = parse_imported_functions_chunk(FunctionChunks, AtomResolver),

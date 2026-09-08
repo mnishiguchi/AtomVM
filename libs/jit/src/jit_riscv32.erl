@@ -40,6 +40,8 @@
     call_primitive/3,
     call_primitive_last/3,
     call_primitive_with_cp/3,
+    validate_bif/2,
+    validate_external_call/2,
     return_if_not_equal_to_ctx/2,
     jump_to_label/2,
     jump_to_continuation/2,
@@ -76,10 +78,15 @@
     add_label/2,
     add_label/3,
     xor_/3,
-    shift_right_arith/3,
+    shift_right_arith/3
+]).
+
+-ifndef(JIT_RISCV32E).
+-export([
     div_/3,
     rem_/3
 ]).
+-endif.
 
 -ifdef(JIT_DWARF).
 -export([
@@ -309,6 +316,122 @@
 -spec word_size() -> 4 | 8.
 word_size() -> 4.
 
+validate_primitive(#state{variant = Variant}, Primitive) ->
+    case Variant band ?JIT_VARIANT_MINIMAL of
+        0 ->
+            ok;
+        _ ->
+            validate_minimal_primitive(Variant, Primitive)
+    end.
+
+validate_minimal_primitive(_Variant, Primitive) when
+    Primitive =:= ?PRIM_RAISE_ERROR;
+    Primitive =:= ?PRIM_RETURN;
+    Primitive =:= ?PRIM_SCHEDULE_NEXT_CP;
+    Primitive =:= ?PRIM_MODULE_GET_ATOM_TERM_BY_ID;
+    Primitive =:= ?PRIM_CALL_EXT;
+    Primitive =:= ?PRIM_ALLOCATE;
+    Primitive =:= ?PRIM_HANDLE_ERROR;
+    Primitive =:= ?PRIM_TRIM_LIVE_REGS;
+    Primitive =:= ?PRIM_GET_IMPORTED_BIF;
+    Primitive =:= ?PRIM_DEALLOCATE;
+    Primitive =:= ?PRIM_TERMINATE_CONTEXT;
+    Primitive =:= ?PRIM_TERM_COMPARE;
+    Primitive =:= ?PRIM_TEST_HEAP;
+    Primitive =:= ?PRIM_PUT_LIST;
+    Primitive =:= ?PRIM_MODULE_LOAD_LITERAL;
+    Primitive =:= ?PRIM_TERM_ALLOC_TUPLE;
+    Primitive =:= ?PRIM_RAISE_ERROR_TUPLE;
+    Primitive =:= ?PRIM_RAISE;
+    Primitive =:= ?PRIM_CATCH_END;
+    Primitive =:= ?PRIM_RAW_RAISE;
+    Primitive =:= ?PRIM_RAISE_ERROR_MFA;
+    Primitive =:= ?PRIM_TRY_CASE
+->
+    ok;
+validate_minimal_primitive(Variant, Primitive) when
+    Variant band ?JIT_VARIANT_MINIMAL_CONCURRENCY =/= 0,
+    (Primitive =:= ?PRIM_SEND orelse
+        Primitive =:= ?PRIM_PROCESS_SIGNAL_MESSAGES orelse
+        Primitive =:= ?PRIM_MAILBOX_PEEK orelse
+        Primitive =:= ?PRIM_MAILBOX_REMOVE_MESSAGE orelse
+        Primitive =:= ?PRIM_MAILBOX_NEXT orelse
+        Primitive =:= ?PRIM_CANCEL_TIMEOUT orelse
+        Primitive =:= ?PRIM_SCHEDULE_WAIT_CP)
+->
+    ok;
+validate_minimal_primitive(Variant, Primitive) when
+    Variant band ?JIT_VARIANT_MINIMAL_TIMERS =/= 0,
+    (Primitive =:= ?PRIM_TIMEOUT orelse
+        Primitive =:= ?PRIM_WAIT_TIMEOUT orelse
+        Primitive =:= ?PRIM_WAIT_TIMEOUT_TRAP_HANDLER orelse
+        Primitive =:= ?PRIM_CONTEXT_GET_FLAGS)
+->
+    ok;
+validate_minimal_primitive(Variant, Primitive) when
+    Variant band ?JIT_VARIANT_MINIMAL_BINARIES =/= 0,
+    (Primitive =:= ?PRIM_MEMORY_ENSURE_FREE_WITH_ROOTS orelse
+        Primitive =:= ?PRIM_TERM_ALLOC_BIN_MATCH_STATE orelse
+        Primitive =:= ?PRIM_BITSTRING_EXTRACT_INTEGER orelse
+        Primitive =:= ?PRIM_TERM_CREATE_EMPTY_BINARY orelse
+        Primitive =:= ?PRIM_BITSTRING_INSERT_INTEGER)
+->
+    ok;
+validate_minimal_primitive(_Variant, Primitive) ->
+    error({unsupported_minimal_runtime_primitive, Primitive}).
+
+validate_bif(#state{variant = Variant}, MFA) ->
+    case Variant band ?JIT_VARIANT_MINIMAL of
+        0 ->
+            ok;
+        _ ->
+            validate_minimal_bif(Variant, MFA)
+    end.
+
+validate_minimal_bif(_Variant, {erlang, '+', 2}) ->
+    ok;
+validate_minimal_bif(_Variant, {erlang, '-', 2}) ->
+    ok;
+validate_minimal_bif(_Variant, {erlang, '*', 2}) ->
+    ok;
+validate_minimal_bif(_Variant, {erlang, 'div', 2}) ->
+    ok;
+validate_minimal_bif(_Variant, {erlang, 'rem', 2}) ->
+    ok;
+validate_minimal_bif(_Variant, {erlang, length, 1}) ->
+    ok;
+validate_minimal_bif(Variant, {erlang, self, 0}) when
+    Variant band ?JIT_VARIANT_MINIMAL_CONCURRENCY =/= 0
+->
+    ok;
+validate_minimal_bif(_Variant, MFA) ->
+    error({unsupported_minimal_runtime_bif, MFA}).
+
+validate_external_call(#state{variant = Variant}, {erlang, apply, Arity} = MFA) when
+    Variant band ?JIT_VARIANT_MINIMAL =/= 0, (Arity =:= 2 orelse Arity =:= 3)
+->
+    error({unsupported_minimal_runtime_external_call, MFA});
+validate_external_call(
+    #state{variant = Variant}, {erlang, Function, Arity}
+) when
+    Variant band ?JIT_VARIANT_MINIMAL_CONCURRENCY =/= 0,
+    ((Function =:= spawn andalso Arity =:= 3) orelse
+        (Function =:= send andalso Arity =:= 2) orelse
+        (Function =:= '!' andalso Arity =:= 2))
+->
+    ok;
+validate_external_call(
+    #state{variant = Variant}, {erlang, Function, Arity} = MFA
+) when
+    Variant band ?JIT_VARIANT_MINIMAL =/= 0,
+    ((Function =:= spawn andalso Arity =:= 3) orelse
+        (Function =:= send andalso Arity =:= 2) orelse
+        (Function =:= '!' andalso Arity =:= 2))
+->
+    error({unsupported_minimal_runtime_external_call, MFA});
+validate_external_call(_State, _MFA) ->
+    ok.
+
 -ifdef(JIT_RISCV32E).
 prepare_call_args(Args) ->
     lists:flatmap(
@@ -325,6 +448,7 @@ prepare_call_args(Args) ->
     Args.
 -endif.
 
+-ifndef(JIT_RISCV32E).
 div_(
     #state{stream_module = StreamModule, stream = Stream0, regs = Regs0} = State,
     DividendReg,
@@ -344,6 +468,7 @@ rem_(
     Stream1 = StreamModule:append(Stream0, I),
     Regs1 = jit_regs:invalidate_reg(Regs0, DividendReg),
     {State#state{stream = Stream1, regs = Regs1}, DividendReg}.
+-endif.
 
 % ILP32: 64-bit arguments require double-word alignment (even register number)
 parameter_regs0_avm_int64_t(T, [a0, a1 | Rest], Acc) ->

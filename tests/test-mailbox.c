@@ -33,6 +33,11 @@ void test_mailbox_send(void)
 
     assert(!mailbox_has_next(&ctx->mailbox));
 
+    // A null message must not corrupt the mailbox if a caller has no result
+    // channel for reporting an allocation failure.
+    mailbox_post_message(ctx, NULL);
+    assert(!mailbox_has_next(&ctx->mailbox));
+
     mailbox_send(ctx, term_from_int(1));
 
     assert(mailbox_process_outer_list_native(&ctx->mailbox) == NULL);

@@ -1240,7 +1240,7 @@ term term_alloc_refc_binary(size_t size, bool is_const, Heap *heap, GlobalContex
         struct RefcBinary *refc = refc_binary_create_refc(size);
         if (IS_NULL_PTR(refc)) {
             // TODO propagate error to callers of this function, e.g., as an invalid term
-            fprintf(stderr, "memory_create_refc_binary: Unable to allocate %zu bytes for refc_binary.\n", size);
+            fprintf(stderr, "memory_create_refc_binary: Unable to allocate %lu bytes for refc_binary.\n", (unsigned long) size);
             return term_invalid_term();
         }
         boxed_value[3] = (term) refc;
@@ -1280,7 +1280,7 @@ term term_reuse_binary(term src, size_t size, Heap *heap, GlobalContext *glb)
                 list_append(refc_binaries, &old_refc->head);
 #pragma GCC diagnostic pop
                 synclist_unlock(&glb->refc_binaries);
-                fprintf(stderr, "term_reuse_binary: Unable to reallocate %zu bytes for refc_binary.\n", size);
+                fprintf(stderr, "term_reuse_binary: Unable to reallocate %lu bytes for refc_binary.\n", (unsigned long) size);
                 return term_invalid_term();
             }
 

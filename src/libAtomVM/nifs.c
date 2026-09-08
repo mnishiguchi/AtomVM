@@ -1241,10 +1241,18 @@ static term nif_erlang_open_port_2(Context *ctx, int argc, term argv[])
 
     if (!strcmp("echo", driver_name)) {
         new_ctx = context_new(ctx->global);
+        if (UNLIKELY(!new_ctx)) {
+            free(driver_name);
+            RAISE_ERROR(OUT_OF_MEMORY_ATOM);
+        }
         new_ctx->native_handler = process_echo_mailbox;
 
     } else if (!strcmp("console", driver_name)) {
         new_ctx = context_new(ctx->global);
+        if (UNLIKELY(!new_ctx)) {
+            free(driver_name);
+            RAISE_ERROR(OUT_OF_MEMORY_ATOM);
+        }
         new_ctx->native_handler = process_console_mailbox;
     }
 
@@ -1712,6 +1720,9 @@ static term nif_erlang_spawn_fun_opt(Context *ctx, int argc, term argv[])
     VALIDATE_VALUE(opts_term, term_is_list);
 
     Context *new_ctx = context_new(ctx->global);
+    if (UNLIKELY(!new_ctx)) {
+        RAISE_ERROR(OUT_OF_MEMORY_ATOM);
+    }
     context_update_flags(new_ctx, ~Spawning, Spawning);
 
     const term *boxed_value = term_to_const_term_ptr(fun_term);
@@ -1777,22 +1788,27 @@ term nif_erlang_spawn_opt(Context *ctx, int argc, term argv[])
     VALIDATE_VALUE(opts_term, term_is_list);
 
     Context *new_ctx = context_new(ctx->global);
+    if (UNLIKELY(!new_ctx)) {
+        RAISE_ERROR(OUT_OF_MEMORY_ATOM);
+    }
     context_update_flags(new_ctx, ~Spawning, Spawning);
 
     Module *found_module = globalcontext_get_module(ctx->global, term_to_atom_index(module_term));
     if (UNLIKELY(!found_module)) {
+        context_destroy(new_ctx);
         return UNDEFINED_ATOM;
     }
 
     int proper;
     int args_len = term_list_length(argv[2], &proper);
     if (UNLIKELY(!proper)) {
+        context_destroy(new_ctx);
         RAISE_ERROR(BADARG_ATOM);
     }
     int label = module_search_exported_function(found_module, term_to_atom_index(argv[1]), args_len);
-    // TODO: fail here if no function has been found
     if (UNLIKELY(label == 0)) {
-        AVM_ABORT();
+        context_destroy(new_ctx);
+        RAISE_ERROR(UNDEFINED_ATOM);
     }
     new_ctx->saved_module = found_module;
 #ifndef AVM_NO_JIT
@@ -1809,6 +1825,7 @@ term nif_erlang_spawn_opt(Context *ctx, int argc, term argv[])
         new_ctx->saved_ip = found_module->labels[label];
 #else
     if (UNLIKELY(jit_trap_and_load(new_ctx, found_module, label) != TRAP_AND_LOAD_OK)) {
+        context_destroy(new_ctx);
         return UNDEFINED_ATOM;
     }
 #endif
@@ -1834,6 +1851,10 @@ term nif_erlang_spawn_opt(Context *ctx, int argc, term argv[])
     }
 
     while (term_is_nonempty_list(args_term)) {
+        if (UNLIKELY(reg_index >= MAX_REG)) {
+            context_destroy(new_ctx);
+            RAISE_ERROR(BADARG_ATOM);
+        }
         new_ctx->x[reg_index] = term_get_list_head(args_term);
         reg_index++;
 

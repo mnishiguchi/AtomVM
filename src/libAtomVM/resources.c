@@ -251,6 +251,9 @@ int enif_select_read(ErlNifEnv *env, ErlNifEvent event, void *obj, const ErlNifP
         return ERL_NIF_SELECT_BADARG;
     }
     Message *message = mailbox_message_create_normal_message_from_term(msg);
+    if (UNLIKELY(IS_NULL_PTR(message))) {
+        return ERL_NIF_SELECT_FAILED;
+    }
     enum ErlNifSelectFlags mode = ERL_NIF_SELECT_READ;
     return enif_select_common(env, event, mode, obj, pid, term_nil(), message);
 }

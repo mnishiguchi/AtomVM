@@ -314,10 +314,16 @@ first_pass(<<?OP_CALL_ONLY, Rest0/binary>>, MMod, MSt0, #state{tail_cache = TC} 
     ?ASSERT_ALL_NATIVE_FREE(MSt1),
     first_pass(Rest2, MMod, MSt1, State1);
 % 7
-first_pass(<<?OP_CALL_EXT, Rest0/binary>>, MMod, MSt0, State0) ->
+first_pass(
+    <<?OP_CALL_EXT, Rest0/binary>>,
+    MMod,
+    MSt0,
+    #state{import_resolver = ImportResolver} = State0
+) ->
     ?ASSERT_ALL_NATIVE_FREE(MSt0),
     {Arity, Rest1} = decode_literal(Rest0),
     {Index, Rest2} = decode_literal(Rest1),
+    ok = validate_external_call(MMod, MSt0, ImportResolver(Index)),
     ?TRACE("OP_CALL_EXT ~p, ~p\n", [Arity, Index]),
     MSt1 = MMod:decrement_reductions_and_maybe_schedule_next(MSt0),
     State1 = record_continuation_line(MMod, MSt1, State0),
@@ -327,11 +333,17 @@ first_pass(<<?OP_CALL_EXT, Rest0/binary>>, MMod, MSt0, State0) ->
     ?ASSERT_ALL_NATIVE_FREE(MSt2),
     first_pass(Rest2, MMod, MSt2, State1);
 % 8
-first_pass(<<?OP_CALL_EXT_LAST, Rest0/binary>>, MMod, MSt0, State0) ->
+first_pass(
+    <<?OP_CALL_EXT_LAST, Rest0/binary>>,
+    MMod,
+    MSt0,
+    #state{import_resolver = ImportResolver} = State0
+) ->
     ?ASSERT_ALL_NATIVE_FREE(MSt0),
     {Arity, Rest1} = decode_literal(Rest0),
     {Index, Rest2} = decode_literal(Rest1),
     {NWords, Rest3} = decode_literal(Rest2),
+    ok = validate_external_call(MMod, MSt0, ImportResolver(Index)),
     ?TRACE("OP_CALL_EXT_LAST ~p, ~p, ~p\n", [Arity, Index, NWords]),
     MSt1 = MMod:decrement_reductions_and_maybe_schedule_next(MSt0),
     State1 = record_continuation_line(MMod, MSt1, State0),
@@ -341,9 +353,15 @@ first_pass(<<?OP_CALL_EXT_LAST, Rest0/binary>>, MMod, MSt0, State0) ->
     ?ASSERT_ALL_NATIVE_FREE(MSt2),
     first_pass(Rest3, MMod, MSt2, State1);
 % 9
-first_pass(<<?OP_BIF0, Rest0/binary>>, MMod, MSt0, State0) ->
+first_pass(
+    <<?OP_BIF0, Rest0/binary>>,
+    MMod,
+    MSt0,
+    #state{import_resolver = ImportResolver} = State0
+) ->
     ?ASSERT_ALL_NATIVE_FREE(MSt0),
     {Bif, Rest1} = decode_literal(Rest0),
+    ok = validate_bif(MMod, MSt0, ImportResolver(Bif)),
     {MSt1, FuncPtr} = MMod:call_primitive(MSt0, ?PRIM_GET_IMPORTED_BIF, [
         jit_state, Bif
     ]),
@@ -357,10 +375,16 @@ first_pass(<<?OP_BIF0, Rest0/binary>>, MMod, MSt0, State0) ->
     ?ASSERT_ALL_NATIVE_FREE(MSt5),
     first_pass(Rest2, MMod, MSt5, State0);
 % 10
-first_pass(<<?OP_BIF1, Rest0/binary>>, MMod, MSt0, State0) ->
+first_pass(
+    <<?OP_BIF1, Rest0/binary>>,
+    MMod,
+    MSt0,
+    #state{import_resolver = ImportResolver} = State0
+) ->
     ?ASSERT_ALL_NATIVE_FREE(MSt0),
     {FailLabel, Rest1} = decode_label(Rest0),
     {Bif, Rest2} = decode_literal(Rest1),
+    ok = validate_bif(MMod, MSt0, ImportResolver(Bif)),
     {MSt1, FuncPtr} = MMod:call_primitive(MSt0, ?PRIM_GET_IMPORTED_BIF, [
         jit_state, Bif
     ]),
@@ -374,10 +398,16 @@ first_pass(<<?OP_BIF1, Rest0/binary>>, MMod, MSt0, State0) ->
     ?ASSERT_ALL_NATIVE_FREE(MSt5),
     first_pass(Rest4, MMod, MSt5, State0);
 % 11
-first_pass(<<?OP_BIF2, Rest0/binary>>, MMod, MSt0, State0) ->
+first_pass(
+    <<?OP_BIF2, Rest0/binary>>,
+    MMod,
+    MSt0,
+    #state{import_resolver = ImportResolver} = State0
+) ->
     ?ASSERT_ALL_NATIVE_FREE(MSt0),
     {FailLabel, Rest1} = decode_label(Rest0),
     {Bif, Rest2} = decode_literal(Rest1),
+    ok = validate_bif(MMod, MSt0, ImportResolver(Bif)),
     {MSt1, FuncPtr} = MMod:call_primitive(MSt0, ?PRIM_GET_IMPORTED_BIF, [
         jit_state, Bif
     ]),
@@ -1077,10 +1107,16 @@ first_pass(<<?OP_IS_FUNCTION, Rest0/binary>>, MMod, MSt0, State0) ->
     ?ASSERT_ALL_NATIVE_FREE(MSt2),
     first_pass(Rest2, MMod, MSt2, State0);
 % 78
-first_pass(<<?OP_CALL_EXT_ONLY, Rest0/binary>>, MMod, MSt0, State0) ->
+first_pass(
+    <<?OP_CALL_EXT_ONLY, Rest0/binary>>,
+    MMod,
+    MSt0,
+    #state{import_resolver = ImportResolver} = State0
+) ->
     ?ASSERT_ALL_NATIVE_FREE(MSt0),
     {Arity, Rest1} = decode_literal(Rest0),
     {Index, Rest2} = decode_literal(Rest1),
+    ok = validate_external_call(MMod, MSt0, ImportResolver(Index)),
     ?TRACE("OP_CALL_EXT_ONLY ~p, ~p\n", [Arity, Index]),
     MSt1 = MMod:decrement_reductions_and_maybe_schedule_next(MSt0),
     State1 = record_continuation_line(MMod, MSt1, State0),
@@ -1511,6 +1547,7 @@ first_pass(
     {MSt1, Arg, Rest4} = decode_typed_compact_term(Rest3, MMod, MSt0, State0),
     {MSt2, Dest, Rest5} = decode_dest(Rest4, MMod, MSt1),
     {BifModule, BifFunName, 1} = ImportResolver(Bif),
+    ok = validate_bif(MMod, MSt0, {BifModule, BifFunName, 1}),
     ?TRACE("OP_GC_BIF1 ~p, ~p, ~p, ~p, ~p\n", [FailLabel, Live, Bif, Arg, Dest]),
     MSt3 = op_gc_bif1(MMod, MSt2, FailLabel, Live, Bif, BifModule, BifFunName, Arg, Dest),
     ?ASSERT_ALL_NATIVE_FREE(MSt3),
@@ -1527,6 +1564,7 @@ first_pass(
     {MSt2, Arg2, Rest5} = decode_typed_compact_term(Rest4, MMod, MSt1, State0),
     {MSt3, Dest, Rest6} = decode_dest(Rest5, MMod, MSt2),
     {BifModule, BifFunName, 2} = ImportResolver(Bif),
+    ok = validate_bif(MMod, MSt0, {BifModule, BifFunName, 2}),
     ?TRACE("OP_GC_BIF2 ~p, ~p, ~p, ~p, ~p, ~p\n", [FailLabel, Live, Bif, Arg1, Arg2, Dest]),
     MSt4 = op_gc_bif2(MMod, MSt3, FailLabel, Live, Bif, BifModule, BifFunName, Arg1, Arg2, Dest),
     ?ASSERT_ALL_NATIVE_FREE(MSt4),
@@ -1719,7 +1757,12 @@ first_pass(<<?OP_BS_SKIP_UTF32, Rest0/binary>>, MMod, MSt0, State0) ->
     ?ASSERT_ALL_NATIVE_FREE(MSt3),
     first_pass(Rest4, MMod, MSt3, State0);
 % 152
-first_pass(<<?OP_GC_BIF3, Rest0/binary>>, MMod, MSt0, State0) ->
+first_pass(
+    <<?OP_GC_BIF3, Rest0/binary>>,
+    MMod,
+    MSt0,
+    #state{import_resolver = ImportResolver} = State0
+) ->
     ?ASSERT_ALL_NATIVE_FREE(MSt0),
     {FailLabel, Rest1} = decode_label(Rest0),
     {Live, Rest2} = decode_literal(Rest1),
@@ -1731,6 +1774,7 @@ first_pass(<<?OP_GC_BIF3, Rest0/binary>>, MMod, MSt0, State0) ->
             true -> Live
         end,
     {Bif, Rest3} = decode_literal(Rest2),
+    ok = validate_bif(MMod, MSt0, ImportResolver(Bif)),
     {MSt3, FuncPtr} = MMod:call_primitive(MSt2, ?PRIM_GET_IMPORTED_BIF, [
         jit_state, Bif
     ]),
@@ -2629,10 +2673,16 @@ first_pass(
     ?ASSERT_ALL_NATIVE_FREE(MSt3),
     first_pass(Rest4, MMod, MSt3, State0);
 % 185
-first_pass(<<?OP_BIF3, Rest0/binary>>, MMod, MSt0, State0) ->
+first_pass(
+    <<?OP_BIF3, Rest0/binary>>,
+    MMod,
+    MSt0,
+    #state{import_resolver = ImportResolver} = State0
+) ->
     ?ASSERT_ALL_NATIVE_FREE(MSt0),
     {FailLabel, Rest1} = decode_label(Rest0),
     {Bif, Rest2} = decode_literal(Rest1),
+    ok = validate_bif(MMod, MSt0, ImportResolver(Bif)),
     {MSt1, FuncPtr} = MMod:call_primitive(MSt0, ?PRIM_GET_IMPORTED_BIF, [
         jit_state, Bif
     ]),
@@ -2647,6 +2697,18 @@ first_pass(<<?OP_BIF3, Rest0/binary>>, MMod, MSt0, State0) ->
     MSt7 = bif_faillabel_test(FailLabel, MMod, MSt6, {free, ResultReg}, {free, Dest}),
     ?ASSERT_ALL_NATIVE_FREE(MSt7),
     first_pass(Rest6, MMod, MSt7, State0).
+
+validate_bif(MMod, MSt, MFA) ->
+    case erlang:function_exported(MMod, validate_bif, 2) of
+        true -> MMod:validate_bif(MSt, MFA);
+        false -> ok
+    end.
+
+validate_external_call(MMod, MSt, MFA) ->
+    case erlang:function_exported(MMod, validate_external_call, 2) of
+        true -> MMod:validate_external_call(MSt, MFA);
+        false -> ok
+    end.
 
 first_pass_bs_create_bin_compute_size(
     AtomType, Src, _Size, _SegmentUnit, Fail, AccLiteralSize0, AccSizeReg0, MMod, MSt0, State0
@@ -4694,8 +4756,13 @@ decode_compact_term(<<_:4, ?COMPACT_ATOM:4, _Rest/binary>> = Bin, MMod, MSt, Sta
 decode_compact_term(<<_:4, ?COMPACT_LARGE_ATOM:4, _Rest/binary>> = Bin, MMod, MSt, State) ->
     {Value, Rest} = decode_value64(Bin),
     decode_compact_term_atom(Value, MMod, MSt, Rest, State);
-decode_compact_term(<<?COMPACT_EXTENDED_LITERAL, Rest0/binary>>, MMod, MSt, _State) ->
+decode_compact_term(<<?COMPACT_EXTENDED_LITERAL, Rest0/binary>>, MMod, MSt, #state{
+    literal_resolver = Resolver
+}) ->
     {Value, Rest1} = decode_literal(Rest0),
+    % Resolve here even though the runtime loads the literal by index.  Target
+    % backends may wrap the resolver to validate their supported literal set.
+    _ = Resolver(Value),
     decode_compact_term_module_literal(Value, MMod, MSt, Rest1);
 decode_compact_term(<<?COMPACT_EXTENDED_TYPED_REGISTER, Rest0/binary>>, MMod, MSt0, _State) ->
     {MSt1, Dest, Rest1} = decode_dest(Rest0, MMod, MSt0),

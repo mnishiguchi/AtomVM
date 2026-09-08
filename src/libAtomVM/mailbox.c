@@ -233,6 +233,9 @@ size_t mailbox_size(Mailbox *mbox)
 #if !defined(AVM_NO_SMP) || defined(AVM_TASK_DRIVER_ENABLED)
 void mailbox_enqueue_message(Context *c, MailboxMessage *m)
 {
+    if (UNLIKELY(IS_NULL_PTR(m))) {
+        return;
+    }
     // Append message at the beginning of outer_first.
     MailboxMessage *current_first = NULL;
     do {
@@ -242,12 +245,18 @@ void mailbox_enqueue_message(Context *c, MailboxMessage *m)
 
 void mailbox_post_message(Context *c, MailboxMessage *m)
 {
+    if (UNLIKELY(IS_NULL_PTR(m))) {
+        return;
+    }
     mailbox_enqueue_message(c, m);
     scheduler_signal_message(c);
 }
 #else
 void mailbox_post_message(Context *c, MailboxMessage *m)
 {
+    if (UNLIKELY(IS_NULL_PTR(m))) {
+        return;
+    }
     m->next = c->mailbox.outer_first;
     c->mailbox.outer_first = m;
     scheduler_signal_message(c);
@@ -261,7 +270,7 @@ MailboxMessage *mailbox_message_create_from_term(enum MessageType type, term t)
     size_t base_size = type == NormalMessage ? sizeof(Message) : sizeof(struct TermSignal);
     void *msg_buf = malloc(base_size + estimated_mem_usage * sizeof(term));
     if (IS_NULL_PTR(msg_buf)) {
-        fprintf(stderr, "Failed to allocate memory: %s:%i.\n", __FILE__, __LINE__);
+        fprintf(stderr, "Failed to allocate memory: %s:%d.\n", __FILE__, __LINE__);
         return NULL;
     }
 
@@ -283,6 +292,9 @@ MailboxMessage *mailbox_message_create_from_term(enum MessageType type, term t)
 Message *mailbox_message_create_normal_message_from_term(term t)
 {
     MailboxMessage *message = mailbox_message_create_from_term(NormalMessage, t);
+    if (UNLIKELY(IS_NULL_PTR(message))) {
+        return NULL;
+    }
     return CONTAINER_OF(message, Message, base);
 }
 
@@ -302,7 +314,7 @@ void mailbox_send_immediate_signal(Context *c, enum MessageType type, term immed
 {
     struct ImmediateSignal *immediate_signal = malloc(sizeof(struct ImmediateSignal));
     if (IS_NULL_PTR(immediate_signal)) {
-        fprintf(stderr, "Failed to allocate memory: %s:%i.\n", __FILE__, __LINE__);
+        fprintf(stderr, "Failed to allocate memory: %s:%d.\n", __FILE__, __LINE__);
         return;
     }
     immediate_signal->base.type = type;
@@ -335,7 +347,7 @@ void mailbox_send_ref_signal(Context *c, enum MessageType type, uint64_t ref_tic
 {
     struct RefSignal *ref_signal = malloc(sizeof(struct RefSignal));
     if (IS_NULL_PTR(ref_signal)) {
-        fprintf(stderr, "Failed to allocate memory: %s:%i.\n", __FILE__, __LINE__);
+        fprintf(stderr, "Failed to allocate memory: %s:%d.\n", __FILE__, __LINE__);
         return;
     }
     ref_signal->base.type = type;
@@ -348,7 +360,7 @@ void mailbox_send_immediate_ref_signal(Context *c, enum MessageType type, term i
 {
     struct ImmediateRefSignal *immediate_ref_signal = malloc(sizeof(struct ImmediateRefSignal));
     if (IS_NULL_PTR(immediate_ref_signal)) {
-        fprintf(stderr, "Failed to allocate memory: %s:%i.\n", __FILE__, __LINE__);
+        fprintf(stderr, "Failed to allocate memory: %s:%d.\n", __FILE__, __LINE__);
         return;
     }
     immediate_ref_signal->base.type = type;
@@ -363,7 +375,7 @@ void mailbox_send_monitor_signal(Context *c, enum MessageType type, struct Monit
     struct MonitorPointerSignal *monitor_signal = malloc(sizeof(struct MonitorPointerSignal));
     if (IS_NULL_PTR(monitor_signal)) {
         // FIXME this function returns void, so the caller is not told the allocation failed
-        fprintf(stderr, "Failed to allocate memory: %s:%i.\n", __FILE__, __LINE__);
+        fprintf(stderr, "Failed to allocate memory: %s:%d.\n", __FILE__, __LINE__);
         return;
     }
     monitor_signal->base.type = type;
@@ -376,7 +388,7 @@ void mailbox_send_empty_body_signal(Context *c, enum MessageType type)
 {
     MailboxMessage *m = malloc(sizeof(MailboxMessage));
     if (IS_NULL_PTR(m)) {
-        fprintf(stderr, "Failed to allocate memory: %s:%i.\n", __FILE__, __LINE__);
+        fprintf(stderr, "Failed to allocate memory: %s:%d.\n", __FILE__, __LINE__);
         return;
     }
     m->type = type;

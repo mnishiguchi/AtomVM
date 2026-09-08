@@ -87,19 +87,125 @@
 static void conv_term_to_bigint(term t, intn_digit_t *tmp_buf, const intn_digit_t **bigint,
     size_t *bigint_len, intn_integer_sign_t *bigint_sign);
 
+#ifdef AVM_MINIMAL_SMALL_INT_ARITHMETIC
+static term bif_minimal_add_2(
+    Context *ctx, uint32_t fail_label, int live, term arg1, term arg2)
+{
+    UNUSED(live);
+    if (UNLIKELY(!term_is_integer(arg1) || !term_is_integer(arg2))) {
+        RAISE_ERROR_BIF(fail_label, BADARITH_ATOM);
+    }
+    avm_int_t result;
+    if (UNLIKELY(BUILTIN_ADD_OVERFLOW(
+            (avm_int_t) (arg1 & ~TERM_INTEGER_TAG),
+            (avm_int_t) (arg2 & ~TERM_INTEGER_TAG), &result))) {
+        RAISE_ERROR_BIF(fail_label, OVERFLOW_ATOM);
+    }
+    return result | TERM_INTEGER_TAG;
+}
+
+static term bif_minimal_sub_2(
+    Context *ctx, uint32_t fail_label, int live, term arg1, term arg2)
+{
+    UNUSED(live);
+    if (UNLIKELY(!term_is_integer(arg1) || !term_is_integer(arg2))) {
+        RAISE_ERROR_BIF(fail_label, BADARITH_ATOM);
+    }
+    avm_int_t result;
+    if (UNLIKELY(BUILTIN_SUB_OVERFLOW(
+            (avm_int_t) (arg1 & ~TERM_INTEGER_TAG),
+            (avm_int_t) (arg2 & ~TERM_INTEGER_TAG), &result))) {
+        RAISE_ERROR_BIF(fail_label, OVERFLOW_ATOM);
+    }
+    return result | TERM_INTEGER_TAG;
+}
+
+static term bif_minimal_mul_2(
+    Context *ctx, uint32_t fail_label, int live, term arg1, term arg2)
+{
+    UNUSED(live);
+    if (UNLIKELY(!term_is_integer(arg1) || !term_is_integer(arg2))) {
+        RAISE_ERROR_BIF(fail_label, BADARITH_ATOM);
+    }
+    avm_int_t result;
+    avm_int_t operand_a = ((avm_int_t) (arg1 & ~TERM_INTEGER_TAG)) >> 2;
+    avm_int_t operand_b = ((avm_int_t) (arg2 & ~TERM_INTEGER_TAG)) >> 2;
+    if (UNLIKELY(BUILTIN_MUL_OVERFLOW(operand_a, operand_b, &result))) {
+        RAISE_ERROR_BIF(fail_label, OVERFLOW_ATOM);
+    }
+    return result | TERM_INTEGER_TAG;
+}
+
+static term bif_minimal_div_2(
+    Context *ctx, uint32_t fail_label, int live, term arg1, term arg2)
+{
+    UNUSED(live);
+    if (UNLIKELY(!term_is_integer(arg1) || !term_is_integer(arg2))) {
+        RAISE_ERROR_BIF(fail_label, BADARITH_ATOM);
+    }
+    avm_int_t divisor = term_to_int(arg2);
+    if (UNLIKELY(divisor == 0)) {
+        RAISE_ERROR_BIF(fail_label, BADARITH_ATOM);
+    }
+    avm_int_t dividend = term_to_int(arg1);
+    if (UNLIKELY(dividend == MIN_NOT_BOXED_INT && divisor == -1)) {
+        RAISE_ERROR_BIF(fail_label, OVERFLOW_ATOM);
+    }
+    return term_from_int(dividend / divisor);
+}
+
+static term bif_minimal_rem_2(
+    Context *ctx, uint32_t fail_label, int live, term arg1, term arg2)
+{
+    UNUSED(live);
+    if (UNLIKELY(!term_is_integer(arg1) || !term_is_integer(arg2))) {
+        RAISE_ERROR_BIF(fail_label, BADARITH_ATOM);
+    }
+    avm_int_t divisor = term_to_int(arg2);
+    if (UNLIKELY(divisor == 0)) {
+        RAISE_ERROR_BIF(fail_label, BADARITH_ATOM);
+    }
+    avm_int_t dividend = term_to_int(arg1);
+    if (UNLIKELY(dividend == MIN_NOT_BOXED_INT && divisor == -1)) {
+        return term_from_int(0);
+    }
+    return term_from_int(dividend % divisor);
+}
+
+#define MINIMAL_ADD_2 bif_minimal_add_2
+#define MINIMAL_SUB_2 bif_minimal_sub_2
+#define MINIMAL_MUL_2 bif_minimal_mul_2
+#define MINIMAL_DIV_2 bif_minimal_div_2
+#define MINIMAL_REM_2 bif_minimal_rem_2
+#else
+#define MINIMAL_ADD_2 bif_erlang_add_2
+#define MINIMAL_SUB_2 bif_erlang_sub_2
+#define MINIMAL_MUL_2 bif_erlang_mul_2
+#define MINIMAL_DIV_2 bif_erlang_div_2
+#define MINIMAL_REM_2 bif_erlang_rem_2
+#endif
+
 const struct ExportedFunction *bif_registry_get_handler(const char *mfa)
 {
 #ifdef AVM_MINIMAL_BIFS
+#ifdef AVM_MINIMAL_RUNTIME_CONCURRENCY
+    static const struct Bif self_bif = {
+        .base.type = BIFFunctionType, .bif0_ptr = bif_erlang_self_0
+    };
+    if (strcmp("erlang:self/0", mfa) == 0) {
+        return &self_bif.base;
+    }
+#endif
     static const struct
     {
         const char *mfa;
         struct GCBif bif;
     } minimal_bifs[] = {
-        { "erlang:+/2", { .base.type = GCBIFFunctionType, .gcbif2_ptr = bif_erlang_add_2 } },
-        { "erlang:-/2", { .base.type = GCBIFFunctionType, .gcbif2_ptr = bif_erlang_sub_2 } },
-        { "erlang:*/2", { .base.type = GCBIFFunctionType, .gcbif2_ptr = bif_erlang_mul_2 } },
-        { "erlang:div/2", { .base.type = GCBIFFunctionType, .gcbif2_ptr = bif_erlang_div_2 } },
-        { "erlang:rem/2", { .base.type = GCBIFFunctionType, .gcbif2_ptr = bif_erlang_rem_2 } },
+        { "erlang:+/2", { .base.type = GCBIFFunctionType, .gcbif2_ptr = MINIMAL_ADD_2 } },
+        { "erlang:-/2", { .base.type = GCBIFFunctionType, .gcbif2_ptr = MINIMAL_SUB_2 } },
+        { "erlang:*/2", { .base.type = GCBIFFunctionType, .gcbif2_ptr = MINIMAL_MUL_2 } },
+        { "erlang:div/2", { .base.type = GCBIFFunctionType, .gcbif2_ptr = MINIMAL_DIV_2 } },
+        { "erlang:rem/2", { .base.type = GCBIFFunctionType, .gcbif2_ptr = MINIMAL_REM_2 } },
         { "erlang:length/1", { .base.type = GCBIFFunctionType, .gcbif1_ptr = bif_erlang_length_1 } }
     };
 

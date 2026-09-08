@@ -66,13 +66,13 @@ Context *context_new(GlobalContext *glb)
 {
     Context *ctx = malloc(sizeof(Context));
     if (IS_NULL_PTR(ctx)) {
-        fprintf(stderr, "Failed to allocate memory: %s:%i.\n", __FILE__, __LINE__);
+        fprintf(stderr, "Failed to allocate memory: %s:%d.\n", __FILE__, __LINE__);
         return NULL;
     }
     ctx->cp = 0;
 
     if (UNLIKELY(memory_init_heap(&ctx->heap, DEFAULT_STACK_SIZE) != MEMORY_GC_OK)) {
-        fprintf(stderr, "Failed to allocate memory: %s:%i.\n", __FILE__, __LINE__);
+        fprintf(stderr, "Failed to allocate memory: %s:%d.\n", __FILE__, __LINE__);
         free(ctx);
         return NULL;
     }
@@ -158,6 +158,9 @@ void context_destroy(Context *ctx)
     list_remove(&ctx->processes_table_head);
     synclist_unlock(&ctx->global->processes_table);
 
+#ifdef AVM_MINIMAL_RUNTIME_CONCURRENCY
+    mailbox_destroy(&ctx->mailbox, &ctx->heap);
+#endif
     memory_destroy_heap(&ctx->heap, ctx->global);
     free(ctx);
 #else

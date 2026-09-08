@@ -16,7 +16,7 @@
 #include <ch32fun.h>
 
 #ifndef AVM_CH32V006_STACK_RESERVE_BYTES
-#define AVM_CH32V006_STACK_RESERVE_BYTES 1432U
+#define AVM_CH32V006_STACK_RESERVE_BYTES 1536U
 #endif
 
 // Reserve enough stack for nested comparisons and JIT/native call frames.
@@ -24,9 +24,20 @@
 #define STACK_GUARD_BYTES 8U
 #define STACK_GUARD_WORD UINT32_C(0x51ACCA7E)
 #define MALLOC_ALIGNMENT 8U
+#define CH32V006_SRAM_BYTES (8U * 1024U)
 #ifdef AVM_CH32V006_SELF_TEST
 #define STACK_PROBE_PATTERN 0xA5U
 #endif
+
+_Static_assert(
+    STACK_RESERVE_BYTES >= STACK_GUARD_BYTES + MALLOC_ALIGNMENT,
+    "AVM_CH32V006_STACK_RESERVE_BYTES must leave room for the stack guard");
+_Static_assert(
+    STACK_RESERVE_BYTES % MALLOC_ALIGNMENT == 0,
+    "AVM_CH32V006_STACK_RESERVE_BYTES must be a multiple of MALLOC_ALIGNMENT");
+_Static_assert(
+    STACK_RESERVE_BYTES <= CH32V006_SRAM_BYTES - STACK_GUARD_BYTES,
+    "AVM_CH32V006_STACK_RESERVE_BYTES must fit within CH32V006 SRAM");
 
 typedef struct HeapBlock
 {
@@ -43,6 +54,9 @@ extern uint8_t _eusrstack;
 
 static HeapBlock *heap_head;
 static bool stack_guard_initialized;
+#ifdef AVM_CH32V006_ALLOCATOR_FAULT_INJECTION
+static bool fail_next_allocation;
+#endif
 #ifdef AVM_CH32V006_SELF_TEST
 static size_t heap_capacity;
 static size_t heap_current;
@@ -121,6 +135,12 @@ static void heap_init(void)
 void *malloc(size_t size)
 {
     platform_stack_guard_check();
+#ifdef AVM_CH32V006_ALLOCATOR_FAULT_INJECTION
+    if (fail_next_allocation) {
+        fail_next_allocation = false;
+        return NULL;
+    }
+#endif
     if (!size) {
         return NULL;
     }
@@ -162,6 +182,13 @@ void *malloc(size_t size)
     }
     return NULL;
 }
+
+#ifdef AVM_CH32V006_ALLOCATOR_FAULT_INJECTION
+void platform_allocator_fail_next(void)
+{
+    fail_next_allocation = true;
+}
+#endif
 
 void free(void *ptr)
 {
@@ -339,6 +366,8 @@ long sysconf(int name)
 __attribute__((noreturn)) void abort(void)
 {
     printf("AtomVM abort\n");
+    // A peripheral (for example PWM) may have changed the result LED mode.
+    funPinMode(PC3, FUN_OUTPUT);
     while (1) {
         funDigitalWrite(PC3, FUN_HIGH);
         Delay_Ms(600);

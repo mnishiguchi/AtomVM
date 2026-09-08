@@ -23,9 +23,19 @@ bool platform_stack_guard_ok(void);
 bool ch32v006_run_abi_canary(void);
 void platform_stack_probe_start(void);
 #endif
+#ifdef AVM_CH32V006_ALLOCATOR_FAULT_INJECTION
+void platform_allocator_fail_next(void);
+#endif
+
+static void result_led_init(void)
+{
+    // PWM uses PC3 as TIM1 channel 3, so restore GPIO mode before reporting.
+    funPinMode(LED_BUILTIN, FUN_OUTPUT);
+}
 
 static void show_result(bool success)
 {
+    result_led_init();
     while (1) {
         funDigitalWrite(LED_BUILTIN, FUN_HIGH);
         Delay_Ms(success ? 100 : 600);
@@ -38,7 +48,7 @@ int main(void)
 {
     SystemInit();
     funGpioInitAll();
-    funPinMode(LED_BUILTIN, GPIO_Speed_10MHz | GPIO_CNF_OUT_PP);
+    result_led_init();
     platform_stack_guard_init();
     ch32v006_time_init();
 
@@ -72,8 +82,16 @@ int main(void)
         show_result(false);
     }
 
-    run_result_t result = globalcontext_run(global, module, NULL, 0, NULL);
+    run_result_t result;
+#ifdef AVM_CH32V006_OOM_SELF_TEST
+    platform_allocator_fail_next();
+    result = globalcontext_run(global, module, NULL, 0, NULL);
+    bool success = result == RUN_MEMORY_FAILURE && platform_stack_guard_ok();
+    printf("AtomVM initial-process OOM: %s\n", success ? "passed" : "failed");
+#else
+    result = globalcontext_run(global, module, NULL, 0, NULL);
     bool success = result == RUN_SUCCESS && platform_stack_guard_ok();
+#endif
     if (!platform_stack_guard_ok()) {
         printf("FAIL C stack guard\n");
     }

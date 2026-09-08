@@ -15,5 +15,12 @@ void ch32v006_delay_ms(uint32_t milliseconds);
 #ifdef AVM_CH32V006_SELF_TEST
 bool ch32v006_time_self_test(void);
 #endif
+#ifdef AVM_CH32V006_SYSTICK_WRAP_SELF_TEST
+void ch32v006_time_prepare_wrap_test(void);
+bool ch32v006_time_wrap_test_passed(void);
+#endif
+#ifdef AVM_CH32V006_PRODUCTION_TIME_SOAK_SELF_TEST
+bool ch32v006_time_production_soak_passed(void);
+#endif
 
 #endif

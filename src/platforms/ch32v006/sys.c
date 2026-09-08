@@ -12,16 +12,22 @@
 #include <sys.h>
 #include <utils.h>
 
-#ifdef AVM_CH32V006_SELF_TEST
-#define SYSTICK_TRACK_INTERVAL_TICKS (DELAY_MS_TIME * 10U)
-#else
-#define SYSTICK_TRACK_INTERVAL_TICKS UINT32_C(0x40000000)
-#endif
+/* Track complete milliseconds so the hot path avoids 64-bit tick division on RV32E. */
 #define SYSTICK_MAX_DELAY_MS ((UINT32_MAX / DELAY_MS_TIME) / 2U)
+#if defined(AVM_CH32V006_SELF_TEST) && !defined(AVM_CH32V006_PRODUCTION_TIME_SOAK_SELF_TEST)
+#define SYSTICK_TRACK_INTERVAL_MS 10U
+#else
+#define SYSTICK_TRACK_INTERVAL_MS SYSTICK_MAX_DELAY_MS
+#endif
+#define SYSTICK_TRACK_INTERVAL_TICKS (DELAY_MS_TIME * SYSTICK_TRACK_INTERVAL_MS)
 
 static volatile uint32_t systick_sequence;
 static volatile uint32_t systick_completed_intervals;
 static volatile uint32_t systick_interval_start;
+#ifdef AVM_CH32V006_SYSTICK_WRAP_SELF_TEST
+static uint32_t systick_wrap_test_start;
+static bool systick_wrap_test_prepared;
+#endif
 
 void platform_stack_guard_check(void);
 
@@ -162,10 +168,50 @@ uint64_t sys_monotonic_time_u64(void)
         sequence_after = systick_sequence;
     } while ((sequence_before & 1U) || sequence_before != sequence_after);
 
-    uint64_t ticks = ((uint64_t) completed_intervals * SYSTICK_TRACK_INTERVAL_TICKS)
-        + (uint32_t) (systick - interval_start);
-    return ticks / DELAY_MS_TIME;
+    uint64_t completed_milliseconds = (uint64_t) completed_intervals * SYSTICK_TRACK_INTERVAL_MS;
+    uint32_t elapsed_milliseconds = (uint32_t) (systick - interval_start) / DELAY_MS_TIME;
+    return completed_milliseconds + elapsed_milliseconds;
 }
+
+#ifdef AVM_CH32V006_SYSTICK_WRAP_SELF_TEST
+void ch32v006_time_prepare_wrap_test(void)
+{
+    const uint32_t start = UINT32_MAX - (30U * DELAY_MS_TIME);
+    const bool interrupts_enabled = __isenabled_irq();
+
+    __disable_irq();
+    const uint32_t control = SysTick->CTLR;
+    SysTick->CTLR = control & ~(SYSTICK_CTLR_STE | SYSTICK_CTLR_STIE);
+    systick_sequence = 1;
+    systick_completed_intervals = 0;
+    systick_interval_start = start;
+    systick_wrap_test_start = start;
+    systick_wrap_test_prepared = true;
+    SysTick->CNT = start;
+    SysTick->CMP = start + SYSTICK_TRACK_INTERVAL_TICKS;
+    SysTick->SR = 0;
+    systick_sequence = 2;
+    SysTick->CTLR = control;
+    if (interrupts_enabled) {
+        __enable_irq();
+    }
+}
+
+bool ch32v006_time_wrap_test_passed(void)
+{
+    return systick_wrap_test_prepared && funSysTick32() < systick_wrap_test_start
+        && sys_monotonic_time_u64() >= 40U;
+}
+#endif
+
+#ifdef AVM_CH32V006_PRODUCTION_TIME_SOAK_SELF_TEST
+bool ch32v006_time_production_soak_passed(void)
+{
+    const uint64_t two_wraps_ms
+        = ((UINT64_C(1) << 33) + DELAY_MS_TIME - 1U) / DELAY_MS_TIME;
+    return systick_completed_intervals >= 4U && sys_monotonic_time_u64() >= two_wraps_ms;
+}
+#endif
 
 #ifdef AVM_CH32V006_SELF_TEST
 bool ch32v006_time_self_test(void)

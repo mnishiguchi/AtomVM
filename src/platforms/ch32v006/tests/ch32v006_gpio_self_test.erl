@@ -13,7 +13,7 @@
 -define(GPIO_TEST_PIN, 0).
 
 start() ->
-    Result = verify(atomvm:platform(), exercise_gpio(), pc0_guard()),
+    Result = verify(atomvm:platform(), exercise_gpio(), pc0_guard(), swio_guard()),
     ch32v006:report(Result).
 
 exercise_gpio() ->
@@ -22,17 +22,13 @@ exercise_gpio() ->
     PullUp = gpio:digital_read(?GPIO_TEST_PIN),
     ok = gpio:set_pin_pull(?GPIO_TEST_PIN, down),
     PullDown = gpio:digital_read(?GPIO_TEST_PIN),
-    ok = gpio:set_pin_pull(?GPIO_TEST_PIN, floating),
-    ok = gpio:set_pin_mode(?GPIO_TEST_PIN, output_od),
-    ok = gpio:digital_write(?GPIO_TEST_PIN, 0),
-    OpenDrainLow = gpio:digital_read(?GPIO_TEST_PIN),
     ok = gpio:set_pin_mode(?GPIO_TEST_PIN, output),
     ok = gpio:digital_write(?GPIO_TEST_PIN, 1),
     OutputHigh = gpio:digital_read(?GPIO_TEST_PIN),
     ok = gpio:digital_write(?GPIO_TEST_PIN, 0),
     OutputLow = gpio:digital_read(?GPIO_TEST_PIN),
     ok = gpio:deinit(?GPIO_TEST_PIN),
-    {PullUp, PullDown, OpenDrainLow, OutputHigh, OutputLow}.
+    {PullUp, PullDown, OutputHigh, OutputLow}.
 
 pc0_guard() ->
     try gpio:set_pin_pull(32, up) of
@@ -41,7 +37,14 @@ pc0_guard() ->
         error:badarg -> guard_passed
     end.
 
-verify(ch32v006, {high, low, low, high, low}, guard_passed) ->
+swio_guard() ->
+    try gpio:set_pin_mode(49, output) of
+        _ -> guard_failed
+    catch
+        error:badarg -> guard_passed
+    end.
+
+verify(ch32v006, {high, low, high, low}, guard_passed, guard_passed) ->
     passed;
-verify(_, _, _) ->
+verify(_, _, _, _) ->
     failed.

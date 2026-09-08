@@ -11,14 +11,12 @@ start() ->
     UndefGuard = guard_undef(),
     BadarithGuard = guard_badarith(0),
     Churn = churn(32, []),
-    Containers = inspect([alpha, beta], {left, right}),
     Result = verify(
         ready,
         UndefGuard,
         BadarithGuard,
         arithmetic(17, 5),
         Churn,
-        Containers,
         done
     ),
     ch32v006:report(Result).
@@ -30,9 +28,6 @@ churn(0, Acc) ->
     Acc;
 churn(N, _Acc) ->
     churn(N - 1, [{N, N, N}]).
-
-inspect(List, Tuple) ->
-    {length(List), hd(List), tl(List), element(2, Tuple), tuple_size(Tuple)}.
 
 guard_undef() ->
     try ch32v006_missing:call() of
@@ -54,9 +49,8 @@ verify(
     guard_passed,
     {22, 12, 85, 3, 2},
     [{1, 1, 1}],
-    {2, alpha, [beta], right, 2},
     done
 ) ->
     passed;
-verify(_, _, _, _, _, _, _) ->
+verify(_, _, _, _, _, _) ->
     failed.

@@ -13,20 +13,41 @@
 
 #include <ch32fun.h>
 
+#include "ch32v006_pins.h"
 #include "ch32v006_time.h"
+#ifdef AVM_CH32V006_PERIPHERALS
+#include "ch32v006_peripherals.h"
+#endif
 
 #include <defaultatoms.h>
 #include <interop.h>
-#ifdef AVM_CH32V006_SELF_TEST
+#if defined(AVM_CH32V006_SELF_TEST) || defined(AVM_MINIMAL_RUNTIME_CONCURRENCY) \
+    || defined(AVM_CH32V006_BINARY_OOM_SELF_TEST)
 #include <memory.h>
+#endif
+#ifdef AVM_CH32V006_BINARY_OOM_SELF_TEST
+#include <context.h>
 #endif
 #include <platform_nifs.h>
 #include <term.h>
+#ifdef AVM_MINIMAL_RUNTIME_CONCURRENCY
+#include <context.h>
+#include <globalcontext.h>
+#include <list.h>
+#include <mailbox.h>
+#include <module.h>
+#include <scheduler.h>
+#include <synclist.h>
+#endif
 
 #ifdef AVM_CH32V006_SELF_TEST
 void platform_heap_stats(size_t *capacity, size_t *current, size_t *peak);
 size_t platform_stack_peak(void);
 size_t platform_stack_reserve(void);
+#endif
+#if defined(AVM_CH32V006_BINARY_OOM_SELF_TEST) || defined(AVM_CH32V006_CONCURRENCY_OOM_SELF_TEST) \
+    || defined(AVM_CH32V006_TIMER_OOM_SELF_TEST)
+void platform_allocator_fail_next(void);
 #endif
 
 enum
@@ -63,25 +84,13 @@ static const AtomStringIntPair pin_level_table[] = {
     SELECT_INT_DEFAULT(-1)
 };
 
-static bool pin_is_safe(int32_t pin)
-{
-    // PC0 drives the onboard programmer's reset input on UIAPduino V1.1.
-    if (pin == PC0) {
-        return false;
-    }
-
-    int32_t port = pin >> 4;
-    int32_t index = pin & 0xF;
-    return index >= 0 && ((port == 0 && index <= 7) || (port == 1 && index <= 6) || (port == 2 && index <= 7) || (port == 3 && index <= 7));
-}
-
 static bool get_pin(term pin_term, int32_t *pin)
 {
     if (!term_is_integer(pin_term)) {
         return false;
     }
     *pin = term_to_int32(pin_term);
-    return pin_is_safe(*pin);
+    return ch32v006_pin_is_safe(*pin);
 }
 
 static term nif_atomvm_platform(Context *ctx, int argc, term argv[])
@@ -209,6 +218,144 @@ static term nif_delay_ms(Context *ctx, int argc, term argv[])
     return OK_ATOM;
 }
 
+#ifdef AVM_CH32V006_SYSTICK_WRAP_SELF_TEST
+static term nif_prepare_systick_wrap(Context *ctx, int argc, term argv[])
+{
+    UNUSED(ctx);
+    UNUSED(argv);
+    if (argc != 0) {
+        return term_invalid_term();
+    }
+    ch32v006_time_prepare_wrap_test();
+    return OK_ATOM;
+}
+
+static term nif_systick_wrap_passed(Context *ctx, int argc, term argv[])
+{
+    UNUSED(ctx);
+    UNUSED(argv);
+    if (argc != 0) {
+        return term_invalid_term();
+    }
+    return ch32v006_time_wrap_test_passed() ? TRUE_ATOM : FALSE_ATOM;
+}
+#endif
+
+#ifdef AVM_CH32V006_PRODUCTION_TIME_SOAK_SELF_TEST
+static term nif_production_time_soak_passed(Context *ctx, int argc, term argv[])
+{
+    UNUSED(ctx);
+    UNUSED(argv);
+    if (argc != 0) {
+        return term_invalid_term();
+    }
+    return ch32v006_time_production_soak_passed() ? TRUE_ATOM : FALSE_ATOM;
+}
+#endif
+
+#ifdef AVM_MINIMAL_RUNTIME_CONCURRENCY
+static term concurrency_error(Context *ctx, term reason)
+{
+    context_set_exception_class(ctx, ERROR_ATOM);
+    ctx->exception_reason = reason;
+    ctx->x[0] = ERROR_ATOM;
+    return term_invalid_term();
+}
+
+static size_t active_process_count(GlobalContext *global)
+{
+    size_t count = 0;
+    struct ListHead *processes = synclist_rdlock(&global->processes_table);
+    struct ListHead *item;
+    LIST_FOR_EACH (item, processes) {
+        count++;
+    }
+    synclist_unlock(&global->processes_table);
+    return count;
+}
+
+static term nif_spawn(Context *ctx, int argc, term argv[])
+{
+    if (argc != 3 || !term_is_atom(argv[0]) || !term_is_atom(argv[1]) || !term_is_list(argv[2])) {
+        return term_invalid_term();
+    }
+    if (active_process_count(ctx->global) >= AVM_CH32V006_MAX_PROCESSES) {
+        return concurrency_error(ctx, SYSTEM_LIMIT_ATOM);
+    }
+
+    Module *module = globalcontext_get_module(ctx->global, term_to_atom_index(argv[0]));
+    if (IS_NULL_PTR(module) || IS_NULL_PTR(module->native_code)) {
+        return term_invalid_term();
+    }
+
+    int proper;
+    int arity = term_list_length(argv[2], &proper);
+    if (!proper || arity < 0 || arity > MAX_REG) {
+        return term_invalid_term();
+    }
+    int label = module_search_exported_function(module, term_to_atom_index(argv[1]), arity);
+    if (label == 0) {
+        return term_invalid_term();
+    }
+
+    Context *new_ctx = context_new(ctx->global);
+    if (IS_NULL_PTR(new_ctx)) {
+        return concurrency_error(ctx, OUT_OF_MEMORY_ATOM);
+    }
+    context_update_flags(new_ctx, ~Spawning, Spawning);
+
+    size_t heap_need = 0;
+    term args = argv[2];
+    while (term_is_nonempty_list(args)) {
+        size_t arg_need = memory_estimate_usage(term_get_list_head(args));
+        if (arg_need > SIZE_MAX - heap_need) {
+            context_destroy(new_ctx);
+            return concurrency_error(ctx, OUT_OF_MEMORY_ATOM);
+        }
+        heap_need += arg_need;
+        args = term_get_list_tail(args);
+    }
+    if (memory_ensure_free_opt(new_ctx, heap_need, MEMORY_CAN_SHRINK) != MEMORY_GC_OK) {
+        context_destroy(new_ctx);
+        return concurrency_error(ctx, OUT_OF_MEMORY_ATOM);
+    }
+
+    args = argv[2];
+    for (int i = 0; i < arity; ++i) {
+        new_ctx->x[i] = memory_copy_term_tree(&new_ctx->heap, term_get_list_head(args));
+        args = term_get_list_tail(args);
+    }
+    new_ctx->group_leader = ctx->group_leader;
+    new_ctx->saved_module = module;
+    new_ctx->saved_function_ptr = module_get_native_entry_point(module, label);
+    new_ctx->cp = module_address(module->module_index, module->end_instruction_ii);
+
+    scheduler_init_ready(new_ctx);
+    return term_from_local_process_id(new_ctx->process_id);
+}
+
+static term nif_send(Context *ctx, int argc, term argv[])
+{
+    if (argc != 2 || !term_is_local_pid(argv[0])) {
+        return term_invalid_term();
+    }
+
+    int32_t process_id = term_to_local_process_id(argv[0]);
+    Context *recipient = globalcontext_get_process_lock(ctx->global, process_id);
+    if (recipient) {
+        MailboxMessage *message = mailbox_message_create_from_term(NormalMessage, argv[1]);
+        if (IS_NULL_PTR(message)) {
+            globalcontext_get_process_unlock(ctx->global, recipient);
+            return concurrency_error(ctx, OUT_OF_MEMORY_ATOM);
+        }
+        mailbox_post_message(recipient, message);
+        globalcontext_get_process_unlock(ctx->global, recipient);
+    }
+
+    return argv[1];
+}
+#endif
+
 #ifdef AVM_CH32V006_SELF_TEST
 static term nif_report(Context *ctx, int argc, term argv[])
 {
@@ -241,6 +388,58 @@ static term nif_report(Context *ctx, int argc, term argv[])
 }
 #endif
 
+#if defined(AVM_CH32V006_BINARY_OOM_SELF_TEST) || defined(AVM_CH32V006_CONCURRENCY_OOM_SELF_TEST) \
+    || defined(AVM_CH32V006_TIMER_OOM_SELF_TEST)
+static term nif_fail_next_allocation(Context *ctx, int argc, term argv[])
+{
+    UNUSED(ctx);
+    UNUSED(argv);
+    if (argc != 0) {
+        return term_invalid_term();
+    }
+    platform_allocator_fail_next();
+    return OK_ATOM;
+}
+#endif
+
+#ifdef AVM_CH32V006_BINARY_OOM_SELF_TEST
+static term nif_binary_allocation_probe(Context *ctx, int argc, term argv[])
+{
+    UNUSED(argv);
+    if (argc != 0) {
+        return term_invalid_term();
+    }
+    if (memory_ensure_free_opt(
+            ctx, TERM_BOXED_REFC_BINARY_SIZE, MEMORY_CAN_SHRINK)
+        != MEMORY_GC_OK) {
+        context_set_exception_class(ctx, ERROR_ATOM);
+        ctx->exception_reason = OUT_OF_MEMORY_ATOM;
+        ctx->x[0] = ERROR_ATOM;
+        return term_invalid_term();
+    }
+    term binary = term_create_empty_binary(64, &ctx->heap, ctx->global);
+    if (term_is_invalid_term(binary)) {
+        context_set_exception_class(ctx, ERROR_ATOM);
+        ctx->exception_reason = OUT_OF_MEMORY_ATOM;
+        ctx->x[0] = ERROR_ATOM;
+        return term_invalid_term();
+    }
+    return binary;
+}
+#endif
+
+#ifdef AVM_CH32V006_ARITHMETIC_BOUNDARY_SELF_TEST
+static term nif_small_int_max(Context *ctx, int argc, term argv[])
+{
+    UNUSED(ctx);
+    UNUSED(argv);
+    if (argc != 0) {
+        return term_invalid_term();
+    }
+    return term_from_int(MAX_NOT_BOXED_INT);
+}
+#endif
+
 #define DEFINE_NIF(name)                                          \
     static const struct Nif name##_nif                            \
         __attribute__((section(".rodata.ch32v006_nifs")))         \
@@ -256,8 +455,29 @@ DEFINE_NIF(gpio_set_pin_pull);
 DEFINE_NIF(gpio_digital_write);
 DEFINE_NIF(gpio_digital_read);
 DEFINE_NIF(delay_ms);
+#ifdef AVM_CH32V006_SYSTICK_WRAP_SELF_TEST
+DEFINE_NIF(prepare_systick_wrap);
+DEFINE_NIF(systick_wrap_passed);
+#endif
+#ifdef AVM_CH32V006_PRODUCTION_TIME_SOAK_SELF_TEST
+DEFINE_NIF(production_time_soak_passed);
+#endif
+#ifdef AVM_MINIMAL_RUNTIME_CONCURRENCY
+DEFINE_NIF(spawn);
+DEFINE_NIF(send);
+#endif
 #ifdef AVM_CH32V006_SELF_TEST
 DEFINE_NIF(report);
+#endif
+#if defined(AVM_CH32V006_BINARY_OOM_SELF_TEST) || defined(AVM_CH32V006_CONCURRENCY_OOM_SELF_TEST) \
+    || defined(AVM_CH32V006_TIMER_OOM_SELF_TEST)
+DEFINE_NIF(fail_next_allocation);
+#endif
+#ifdef AVM_CH32V006_BINARY_OOM_SELF_TEST
+DEFINE_NIF(binary_allocation_probe);
+#endif
+#ifdef AVM_CH32V006_ARITHMETIC_BOUNDARY_SELF_TEST
+DEFINE_NIF(small_int_max);
 #endif
 
 const struct Nif *platform_nifs_get_nif(const char *nifname)
@@ -286,9 +506,52 @@ const struct Nif *platform_nifs_get_nif(const char *nifname)
     if (strcmp("ch32v006:delay_ms/1", nifname) == 0) {
         return &delay_ms_nif;
     }
+#ifdef AVM_CH32V006_SYSTICK_WRAP_SELF_TEST
+    if (strcmp("ch32v006:prepare_systick_wrap/0", nifname) == 0) {
+        return &prepare_systick_wrap_nif;
+    }
+    if (strcmp("ch32v006:systick_wrap_passed/0", nifname) == 0) {
+        return &systick_wrap_passed_nif;
+    }
+#endif
+#ifdef AVM_CH32V006_PRODUCTION_TIME_SOAK_SELF_TEST
+    if (strcmp("ch32v006:production_time_soak_passed/0", nifname) == 0) {
+        return &production_time_soak_passed_nif;
+    }
+#endif
+#ifdef AVM_MINIMAL_RUNTIME_CONCURRENCY
+    if (strcmp("erlang:spawn/3", nifname) == 0) {
+        return &spawn_nif;
+    }
+    if (strcmp("erlang:send/2", nifname) == 0 || strcmp("erlang:!/2", nifname) == 0) {
+        return &send_nif;
+    }
+#endif
 #ifdef AVM_CH32V006_SELF_TEST
     if (strcmp("ch32v006:report/1", nifname) == 0) {
         return &report_nif;
+    }
+#endif
+#if defined(AVM_CH32V006_BINARY_OOM_SELF_TEST) || defined(AVM_CH32V006_CONCURRENCY_OOM_SELF_TEST) \
+    || defined(AVM_CH32V006_TIMER_OOM_SELF_TEST)
+    if (strcmp("ch32v006:fail_next_allocation/0", nifname) == 0) {
+        return &fail_next_allocation_nif;
+    }
+#endif
+#ifdef AVM_CH32V006_BINARY_OOM_SELF_TEST
+    if (strcmp("ch32v006:binary_allocation_probe/0", nifname) == 0) {
+        return &binary_allocation_probe_nif;
+    }
+#endif
+#ifdef AVM_CH32V006_ARITHMETIC_BOUNDARY_SELF_TEST
+    if (strcmp("ch32v006:small_int_max/0", nifname) == 0) {
+        return &small_int_max_nif;
+    }
+#endif
+#ifdef AVM_CH32V006_PERIPHERALS
+    const struct Nif *peripheral_nif = ch32v006_peripherals_get_nif(nifname);
+    if (peripheral_nif) {
+        return peripheral_nif;
     }
 #endif
     return NULL;

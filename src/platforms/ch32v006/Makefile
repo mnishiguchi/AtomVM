@@ -10,9 +10,28 @@ TARGET := atomvm_ch32v006
 TARGET_MCU := CH32V006
 BOARD := uiapduino-pro-micro-ch32v006
 FLASH_LIMIT := 63488
-C_STACK_RESERVE_BYTES ?= 1432
+MIN_FLASH_HEADROOM ?= 1024
+C_STACK_RESERVE_BYTES ?= 1536
+MEMORY_PRESSURE_STACK_RESERVE_BYTES ?= 2048
+ALLOW_SWIO_PIN ?= 0
+CONCURRENCY ?= 0
+TIMERS ?= 0
+BINARIES ?= 0
+MAX_PROCESSES ?= 2
+PERIPHERALS ?=
+SUPPORTED_PERIPHERALS := gpio_irq uart adc i2c spi pwm
+UNKNOWN_PERIPHERALS := $(filter-out $(SUPPORTED_PERIPHERALS),$(PERIPHERALS))
+ifneq ($(strip $(UNKNOWN_PERIPHERALS)),)
+$(error Unsupported PERIPHERALS value(s): $(UNKNOWN_PERIPHERALS))
+endif
 BUILD_DIR := build
+# start_beam.S and abi_canary.S embed files from this fixed directory.
+ifneq ($(BUILD_DIR),build)
+$(error BUILD_DIR must be build; use IMAGE_DIR to select an artifact destination)
+endif
 HOST_JIT_DIR := $(BUILD_DIR)/host-jit
+HOST_OTP_RELEASE := $(shell erl -noshell -eval 'io:format("~s", [erlang:system_info(otp_release)]), halt().' 2>/dev/null)
+HOST_JIT_STAMP := $(HOST_JIT_DIR)/.stamp-otp-$(HOST_OTP_RELEASE)
 IMAGE_DIR ?= $(BUILD_DIR)/images
 RELEASE_DIR ?= $(BUILD_DIR)/release
 FLASH_IMAGE ?= $(TARGET).bin
@@ -30,6 +49,8 @@ EMBEDDED_BEAM := $(BUILD_DIR)/start.beam
 ABI_CANARY_BIN := $(BUILD_DIR)/ch32v006_abi_canary.bin
 IMAGE_BASENAME ?= AtomVM-$(BOARD)
 RELEASE_BASENAME ?= AtomVM-$(BOARD)-$(ATOMVM_VERSION)
+AOT_TARGET := riscv32e+minimal
+EXPECTED_JIT_VARIANT := 13
 
 LIBATOMVM_SOURCES := \
     atom.c \
@@ -68,11 +89,36 @@ ADDITIONAL_C_FILES := \
     start_beam.S \
     $(addprefix $(ATOMVM_ROOT)/src/libAtomVM/,$(LIBATOMVM_SOURCES))
 
+ifneq ($(strip $(PERIPHERALS)),)
+ADDITIONAL_C_FILES += ch32v006_peripherals.c
+EXTRA_CFLAGS += -DAVM_CH32V006_PERIPHERALS
+endif
+
+ifneq ($(filter gpio_irq,$(PERIPHERALS)),)
+EXTRA_CFLAGS += -DAVM_CH32V006_GPIO_IRQ
+endif
+ifneq ($(filter uart,$(PERIPHERALS)),)
+EXTRA_CFLAGS += -DAVM_CH32V006_UART
+endif
+ifneq ($(filter adc,$(PERIPHERALS)),)
+EXTRA_CFLAGS += -DAVM_CH32V006_ADC
+endif
+ifneq ($(filter i2c,$(PERIPHERALS)),)
+EXTRA_CFLAGS += -DAVM_CH32V006_I2C
+endif
+ifneq ($(filter spi,$(PERIPHERALS)),)
+EXTRA_CFLAGS += -DAVM_CH32V006_SPI
+endif
+ifneq ($(filter pwm,$(PERIPHERALS)),)
+EXTRA_CFLAGS += -DAVM_CH32V006_PWM
+endif
+
 EXTRA_CFLAGS += \
     -std=gnu11 \
     -I$(ATOMVM_ROOT)/src/libAtomVM \
     -DAVM_MINIMAL_RUNTIME \
     -DAVM_MINIMAL_BIFS \
+    -DAVM_MINIMAL_SMALL_INT_ARITHMETIC \
     -DAVM_NATIVE_INTERFACE_MINIMAL \
     -DAVM_TEMP_STACK_SIZE=20 \
     -DAVM_NO_EMU \
@@ -81,14 +127,82 @@ EXTRA_CFLAGS += \
     -DNDEBUG \
     -DCONFIG_LOG_LEVEL_MAX=0
 
-ifneq ($(filter ch32v006_self_test ch32v006_gpio_self_test,$(START_NAME)),)
+ifeq ($(CONCURRENCY),1)
+AOT_TARGET := riscv32e+minimal+concurrency
+EXPECTED_JIT_VARIANT := 29
+EXTRA_CFLAGS += \
+    -DAVM_MINIMAL_RUNTIME_CONCURRENCY \
+    -DAVM_CH32V006_MAX_PROCESSES=$(MAX_PROCESSES)
+endif
+
+ifeq ($(TIMERS),1)
+ifneq ($(CONCURRENCY),1)
+$(error TIMERS=1 requires CONCURRENCY=1)
+endif
+AOT_TARGET := riscv32e+minimal+concurrency+timers
+EXPECTED_JIT_VARIANT := 61
+EXTRA_CFLAGS += -DAVM_MINIMAL_RUNTIME_TIMERS
+endif
+
+ifeq ($(BINARIES),1)
+ifneq ($(CONCURRENCY),0)
+$(error BINARIES=1 cannot currently be combined with CONCURRENCY=1)
+endif
+AOT_TARGET := riscv32e+minimal+binaries
+EXPECTED_JIT_VARIANT := 77
+EXTRA_CFLAGS += -DAVM_MINIMAL_RUNTIME_BINARIES
+endif
+
+ifeq ($(ALLOW_SWIO_PIN),1)
+EXTRA_CFLAGS += -DAVM_CH32V006_ALLOW_SWIO_PIN
+endif
+
+ifneq ($(filter %_self_test,$(START_NAME)),)
 EXTRA_CFLAGS += -DAVM_CH32V006_SELF_TEST
+endif
+
+ifeq ($(START_NAME),ch32v006_oom_self_test)
+EXTRA_CFLAGS += -DAVM_CH32V006_OOM_SELF_TEST
+endif
+
+ifneq ($(filter ch32v006_oom_self_test ch32v006_binary_oom_self_test ch32v006_concurrency_oom_self_test ch32v006_concurrency_send_oom_self_test ch32v006_external_send_self_test ch32v006_process_oom_stress_self_test ch32v006_timer_oom_self_test,$(START_NAME)),)
+EXTRA_CFLAGS += -DAVM_CH32V006_ALLOCATOR_FAULT_INJECTION
+endif
+
+ifeq ($(START_NAME),ch32v006_binary_oom_self_test)
+EXTRA_CFLAGS += -DAVM_CH32V006_BINARY_OOM_SELF_TEST
+endif
+
+ifeq ($(START_NAME),ch32v006_arithmetic_boundary_self_test)
+EXTRA_CFLAGS += -DAVM_CH32V006_ARITHMETIC_BOUNDARY_SELF_TEST
+endif
+
+ifneq ($(filter ch32v006_concurrency_oom_self_test ch32v006_concurrency_send_oom_self_test ch32v006_external_send_self_test ch32v006_process_oom_stress_self_test,$(START_NAME)),)
+EXTRA_CFLAGS += -DAVM_CH32V006_CONCURRENCY_OOM_SELF_TEST
+endif
+
+ifeq ($(START_NAME),ch32v006_timer_oom_self_test)
+EXTRA_CFLAGS += -DAVM_CH32V006_TIMER_OOM_SELF_TEST
+endif
+
+ifeq ($(START_NAME),ch32v006_timer_wrap_self_test)
+EXTRA_CFLAGS += -DAVM_CH32V006_SYSTICK_WRAP_SELF_TEST
+endif
+
+ifeq ($(START_NAME),ch32v006_timer_production_soak_self_test)
+EXTRA_CFLAGS += -DAVM_CH32V006_PRODUCTION_TIME_SOAK_SELF_TEST
+endif
+
+ifeq ($(START_NAME),ch32v006_io_binary_self_test)
+EXTRA_CFLAGS += -DAVM_CH32V006_IO_BINARY_SELF_TEST
 endif
 
 EXTRA_ELF_DEPENDENCIES := $(EMBEDDED_BEAM) $(ABI_CANARY_BIN)
 
 JIT_ERLANG_SOURCES := \
-    ch32v006_abi_canary_gen.erl \
+    tools/ch32v006_abi_canary_gen.erl \
+    tools/ch32v006_negative_tests.erl \
+    tools/ch32v006_validate.erl \
     $(ATOMVM_ROOT)/libs/jit/src/jit_regs.erl \
     $(ATOMVM_ROOT)/libs/jit/src/jit_stream_binary.erl \
     $(ATOMVM_ROOT)/libs/jit/src/jit_riscv32_asm.erl \
@@ -97,48 +211,82 @@ JIT_ERLANG_SOURCES := \
     $(ATOMVM_ROOT)/libs/jit/src/jit.erl \
     $(ATOMVM_ROOT)/libs/jit/src/jit_precompile.erl
 
-$(HOST_JIT_DIR)/.stamp: $(JIT_ERLANG_SOURCES)
+JIT_ERLANG_DEPENDENCIES := \
+    $(JIT_ERLANG_SOURCES) \
+    $(ATOMVM_ROOT)/libs/jit/include/jit.hrl \
+    $(ATOMVM_ROOT)/libs/jit/src/compact_term.hrl \
+    $(ATOMVM_ROOT)/libs/jit/src/jit_backend_regs_impl.hrl \
+    $(ATOMVM_ROOT)/libs/jit/src/jit_riscv_impl.hrl \
+    $(ATOMVM_ROOT)/libs/jit/src/primitives.hrl
+
+$(HOST_JIT_STAMP): $(JIT_ERLANG_DEPENDENCIES)
 	mkdir -p $(HOST_JIT_DIR)
 	erlc -I $(ATOMVM_ROOT)/libs/jit/include -I $(ATOMVM_ROOT)/libs/jit/src \
 	    -o $(HOST_JIT_DIR) $(JIT_ERLANG_SOURCES)
+	$(RM) $(HOST_JIT_DIR)/.stamp-otp-*
 	touch $@
 
-$(ABI_CANARY_BIN): $(HOST_JIT_DIR)/.stamp
+$(ABI_CANARY_BIN): $(HOST_JIT_STAMP)
 	mkdir -p $(BUILD_DIR)
 	erl -pa $(HOST_JIT_DIR) -noshell \
 	    -eval 'ok = ch32v006_abi_canary_gen:generate("$@"), halt().'
 
 ifneq ($(strip $(START_BEAM_INPUT)),)
-$(PRECOMPILED_BEAM): $(START_BEAM_INPUT) $(HOST_JIT_DIR)/.stamp
+$(PRECOMPILED_BEAM): $(START_BEAM_INPUT) $(HOST_JIT_STAMP)
 	mkdir -p $(BUILD_DIR)
 	cp $< $@
 	erl -pa $(HOST_JIT_DIR) -noshell \
-	    -eval 'jit_precompile:compile("riscv32e", "$(BUILD_DIR)", false, "$@"), halt().'
+	    -eval 'jit_precompile:compile("$(AOT_TARGET)", "$(BUILD_DIR)", false, "$@"), halt().'
+	erl -pa $(HOST_JIT_DIR) -noshell \
+	    -eval 'ok = ch32v006_validate:validate_beam("$@", $(EXPECTED_JIT_VARIANT)), halt().'
 else
-$(PRECOMPILED_BEAM): $(START_SOURCE) $(HOST_JIT_DIR)/.stamp
+$(PRECOMPILED_BEAM): $(START_SOURCE) $(HOST_JIT_STAMP)
 	mkdir -p $(BUILD_DIR)
 	erlc +debug_info -o $(BUILD_DIR) $<
+ifeq ($(START_NAME),ch32v006_arithmetic_boundary_self_test)
+	erl -noshell -eval '{beam_file, _, _, _, _, Functions} = beam_disasm:file("$@"), Instructions = lists:append([Is || {function, _, _, _, Is} <- Functions]), Ops = [Op || {gc_bif, Op, _, _, _, _} <- Instructions], Expected = [list_to_atom(S) || S <- ["+", "-", "*", "div", "rem"]], true = lists:all(fun(Op) -> lists:member(Op, Ops) end, Expected), halt().'
+endif
 	erl -pa $(HOST_JIT_DIR) -noshell \
-	    -eval 'jit_precompile:compile("riscv32e", "$(BUILD_DIR)", false, "$@"), halt().'
+	    -eval 'jit_precompile:compile("$(AOT_TARGET)", "$(BUILD_DIR)", false, "$@"), halt().'
+	erl -pa $(HOST_JIT_DIR) -noshell \
+	    -eval 'ok = ch32v006_validate:validate_beam("$@", $(EXPECTED_JIT_VARIANT)), halt().'
 endif
 
 $(EMBEDDED_BEAM): $(PRECOMPILED_BEAM) FORCE
 	cp $< $@
 
-.PHONY: build image verify-image release-image acceptance-images flash-uiap monitor-uiap clean help FORCE
+.PHONY: build image verify-image release-image acceptance-images qualification-images arithmetic-boundary-image combined-image concurrency-image concurrency-memory-image concurrency-oom-image concurrency-send-oom-image timer-image timer-memory-image timer-oom-image timer-stress-image timer-wrap-image timer-production-soak-image process-stress-image process-oom-stress-image binary-image binary-oom-image io-binary-image peripheral-images validation-tests flash-uiap monitor-uiap clean help FORCE
+.PHONY: external-send-image external-send-lifecycle-image external-send-badarg-image
 FORCE:
 
 build: $(TARGET).bin
 
 verify-image: build
 	@flash_bytes=$$(wc -c < $(TARGET).bin); \
-	if [ "$$flash_bytes" -gt "$(FLASH_LIMIT)" ]; then \
-	    echo "Image exceeds CH32V006 flash: $$flash_bytes / $(FLASH_LIMIT) bytes"; \
+	flash_budget=$$(( $(FLASH_LIMIT) - $(MIN_FLASH_HEADROOM) )); \
+	if [ "$$flash_bytes" -gt "$$flash_budget" ]; then \
+	    echo "Image leaves less than $(MIN_FLASH_HEADROOM) bytes headroom: $$flash_bytes / $(FLASH_LIMIT) bytes"; \
 	    exit 1; \
 	fi; \
-	echo "Verified $(TARGET).bin: $$flash_bytes / $(FLASH_LIMIT) bytes"
+	echo "Verified $(TARGET).bin: $$flash_bytes / $(FLASH_LIMIT) bytes ($$(( $(FLASH_LIMIT) - flash_bytes )) bytes free)"
 	@riscv64-unknown-elf-readelf -h $(TARGET).elf | grep -Fq 'RISC-V'
 	@riscv64-unknown-elf-readelf -h $(TARGET).elf | grep -Fq 'RVE'
+
+# Keep this record beside the packaged artifact: later builds reuse start.beam
+# and atomvm_ch32v006.*, so their metadata must be captured before the next build.
+define write-build-info
+	sh tools/ch32v006_build_info.sh "$(ATOMVM_ROOT)" "$(CH32FUN)" "$(PREFIX)-gcc" \
+	    "$(1).bin" "$(TARGET).elf" "$(EMBEDDED_BEAM)" \
+	    "$(if $(strip $(START_BEAM_INPUT)),$(START_BEAM_INPUT),$(START_SOURCE))" \
+	    "BOARD=$(BOARD)" "AOT_TARGET=$(AOT_TARGET)" \
+	    "CONCURRENCY=$(CONCURRENCY)" "TIMERS=$(TIMERS)" "BINARIES=$(BINARIES)" \
+	    "MAX_PROCESSES=$(MAX_PROCESSES)" "PERIPHERALS=$(PERIPHERALS)" \
+	    "C_STACK_RESERVE_BYTES=$(C_STACK_RESERVE_BYTES)" \
+	    "FLASH_LIMIT=$(FLASH_LIMIT)" "MIN_FLASH_HEADROOM=$(MIN_FLASH_HEADROOM)" \
+	    "ALLOW_SWIO_PIN=$(ALLOW_SWIO_PIN)" "CFLAGS=$(CFLAGS)" "LDFLAGS=$(LDFLAGS)" \
+	    > "$(1).build-info.txt.tmp"
+	mv "$(1).build-info.txt.tmp" "$(1).build-info.txt"
+endef
 
 image: verify-image
 	mkdir -p $(IMAGE_DIR)
@@ -146,19 +294,172 @@ image: verify-image
 	cp $(TARGET).hex $(IMAGE_DIR)/$(IMAGE_BASENAME).hex
 	cp $(TARGET).elf $(IMAGE_DIR)/$(IMAGE_BASENAME).elf
 	cd $(IMAGE_DIR) && sha256sum $(IMAGE_BASENAME).bin > $(IMAGE_BASENAME).bin.sha256
+	$(call write-build-info,$(IMAGE_DIR)/$(IMAGE_BASENAME))
 
 release-image: verify-image
 	mkdir -p $(RELEASE_DIR)
 	cp $(TARGET).bin $(RELEASE_DIR)/$(RELEASE_BASENAME).bin
 	cd $(RELEASE_DIR) && sha256sum $(RELEASE_BASENAME).bin > $(RELEASE_BASENAME).bin.sha256
+	$(call write-build-info,$(RELEASE_DIR)/$(RELEASE_BASENAME))
 
 acceptance-images:
-	$(MAKE) START_SOURCE=$(CURDIR)/ch32v006_self_test.erl \
+	$(MAKE) START_SOURCE=$(CURDIR)/tests/ch32v006_self_test.erl \
 	    IMAGE_BASENAME=AtomVM-$(BOARD)-language-self-test image
-	$(MAKE) START_SOURCE=$(CURDIR)/ch32v006_gpio_self_test.erl \
+	$(MAKE) -B START_SOURCE=$(CURDIR)/tests/ch32v006_self_test.erl \
+	    C_STACK_RESERVE_BYTES=$(MEMORY_PRESSURE_STACK_RESERVE_BYTES) \
+	    IMAGE_BASENAME=AtomVM-$(BOARD)-memory-pressure-self-test image
+	$(MAKE) START_SOURCE=$(CURDIR)/tests/ch32v006_gpio_self_test.erl \
 	    IMAGE_BASENAME=AtomVM-$(BOARD)-gpio-self-test image
+	$(MAKE) START_SOURCE=$(CURDIR)/tests/ch32v006_oom_self_test.erl \
+	    IMAGE_BASENAME=AtomVM-$(BOARD)-oom-self-test image
+	$(MAKE) START_SOURCE=$(CURDIR)/tests/ch32v006_heap_oom_self_test.erl \
+	    IMAGE_BASENAME=AtomVM-$(BOARD)-heap-oom-self-test image
 	$(MAKE) START_SOURCE=$(CURDIR)/ch32v006_minimal.erl \
 	    IMAGE_BASENAME=AtomVM-$(BOARD) image
+
+.NOTPARALLEL: qualification-images
+qualification-images: validation-tests acceptance-images arithmetic-boundary-image combined-image concurrency-image concurrency-memory-image concurrency-oom-image concurrency-send-oom-image timer-image timer-memory-image timer-oom-image timer-stress-image timer-wrap-image timer-production-soak-image process-stress-image process-oom-stress-image binary-image binary-oom-image io-binary-image peripheral-images
+
+arithmetic-boundary-image:
+	$(MAKE) -B START_SOURCE=$(CURDIR)/tests/ch32v006_arithmetic_boundary_self_test.erl \
+	    IMAGE_BASENAME=AtomVM-$(BOARD)-arithmetic-boundary-self-test image
+
+combined-image:
+	$(MAKE) -B CONCURRENCY=1 TIMERS=1 \
+	    C_STACK_RESERVE_BYTES=$(MEMORY_PRESSURE_STACK_RESERVE_BYTES) \
+	    START_SOURCE=$(CURDIR)/tests/ch32v006_combined_self_test.erl \
+	    IMAGE_BASENAME=AtomVM-$(BOARD)-combined-self-test image
+
+concurrency-image:
+	$(MAKE) -B CONCURRENCY=1 \
+	    START_SOURCE=$(CURDIR)/tests/ch32v006_concurrency_self_test.erl \
+	    IMAGE_BASENAME=AtomVM-$(BOARD)-concurrency-self-test image
+
+concurrency-memory-image:
+	$(MAKE) -B CONCURRENCY=1 \
+	    C_STACK_RESERVE_BYTES=$(MEMORY_PRESSURE_STACK_RESERVE_BYTES) \
+	    START_SOURCE=$(CURDIR)/tests/ch32v006_concurrency_self_test.erl \
+	    IMAGE_BASENAME=AtomVM-$(BOARD)-concurrency-memory-pressure-self-test image
+
+concurrency-oom-image:
+	$(MAKE) -B CONCURRENCY=1 \
+	    C_STACK_RESERVE_BYTES=$(MEMORY_PRESSURE_STACK_RESERVE_BYTES) \
+	    START_SOURCE=$(CURDIR)/tests/ch32v006_concurrency_oom_self_test.erl \
+	    IMAGE_BASENAME=AtomVM-$(BOARD)-concurrency-oom-self-test image
+
+concurrency-send-oom-image:
+	$(MAKE) -B CONCURRENCY=1 \
+	    C_STACK_RESERVE_BYTES=$(MEMORY_PRESSURE_STACK_RESERVE_BYTES) \
+	    START_SOURCE=$(CURDIR)/tests/ch32v006_concurrency_send_oom_self_test.erl \
+	    IMAGE_BASENAME=AtomVM-$(BOARD)-concurrency-send-oom-self-test image
+
+# Kept separate from the Erlang-only matrix because this tests Elixir codegen.
+external-send-image: EXTERNAL_SEND_TEST = external_send
+external-send-lifecycle-image: EXTERNAL_SEND_TEST = external_send_lifecycle
+external-send-badarg-image: EXTERNAL_SEND_TEST = external_send_badarg
+external-send-image external-send-lifecycle-image external-send-badarg-image:
+	mkdir -p $(BUILD_DIR)/elixir-tests
+	elixirc -o $(BUILD_DIR)/elixir-tests tests/ch32v006_$(EXTERNAL_SEND_TEST)_self_test.ex
+	erl -noshell -eval "\
+	    {beam_file, _, _, _, _, Functions} = beam_disasm:file(\"$(BUILD_DIR)/elixir-tests/ch32v006_$(EXTERNAL_SEND_TEST)_self_test.beam\"), \
+	    Instructions = lists:append([Is || {function, _, _, _, Is} <- Functions]), \
+	    false = lists:member(send, Instructions), \
+	    true = lists:any(fun(I) when is_tuple(I) -> lists:member({extfunc, erlang, send, 2}, tuple_to_list(I)); (_) -> false end, Instructions), \
+	    halt()."
+	$(MAKE) -B CONCURRENCY=1 TIMERS=0 BINARIES=0 MAX_PROCESSES=2 \
+	    C_STACK_RESERVE_BYTES=$(MEMORY_PRESSURE_STACK_RESERVE_BYTES) \
+	    START_BEAM_INPUT=$(BUILD_DIR)/elixir-tests/ch32v006_$(EXTERNAL_SEND_TEST)_self_test.beam \
+	    IMAGE_BASENAME=AtomVM-$(BOARD)-$(subst _,-,$(EXTERNAL_SEND_TEST))-self-test image
+
+timer-image:
+	$(MAKE) -B CONCURRENCY=1 TIMERS=1 \
+	    START_SOURCE=$(CURDIR)/tests/ch32v006_timer_self_test.erl \
+	    IMAGE_BASENAME=AtomVM-$(BOARD)-timer-self-test image
+
+timer-memory-image:
+	$(MAKE) -B CONCURRENCY=1 TIMERS=1 \
+	    C_STACK_RESERVE_BYTES=$(MEMORY_PRESSURE_STACK_RESERVE_BYTES) \
+	    START_SOURCE=$(CURDIR)/tests/ch32v006_timer_self_test.erl \
+	    IMAGE_BASENAME=AtomVM-$(BOARD)-timer-memory-pressure-self-test image
+
+timer-stress-image:
+	$(MAKE) -B CONCURRENCY=1 TIMERS=1 \
+	    C_STACK_RESERVE_BYTES=$(MEMORY_PRESSURE_STACK_RESERVE_BYTES) \
+	    START_SOURCE=$(CURDIR)/tests/ch32v006_timer_stress_self_test.erl \
+	    IMAGE_BASENAME=AtomVM-$(BOARD)-timer-stress-self-test image
+
+timer-wrap-image:
+	$(MAKE) -B CONCURRENCY=1 TIMERS=1 \
+	    C_STACK_RESERVE_BYTES=$(MEMORY_PRESSURE_STACK_RESERVE_BYTES) \
+	    START_SOURCE=$(CURDIR)/tests/ch32v006_timer_wrap_self_test.erl \
+	    IMAGE_BASENAME=AtomVM-$(BOARD)-timer-wrap-self-test image
+
+timer-production-soak-image:
+	$(MAKE) -B CONCURRENCY=1 TIMERS=1 \
+	    C_STACK_RESERVE_BYTES=$(MEMORY_PRESSURE_STACK_RESERVE_BYTES) \
+	    START_SOURCE=$(CURDIR)/tests/ch32v006_timer_production_soak_self_test.erl \
+	    IMAGE_BASENAME=AtomVM-$(BOARD)-timer-production-soak-self-test image
+
+process-stress-image:
+	$(MAKE) -B CONCURRENCY=1 TIMERS=1 \
+	    C_STACK_RESERVE_BYTES=$(MEMORY_PRESSURE_STACK_RESERVE_BYTES) \
+	    START_SOURCE=$(CURDIR)/tests/ch32v006_process_stress_self_test.erl \
+	    IMAGE_BASENAME=AtomVM-$(BOARD)-process-stress-self-test image
+
+process-oom-stress-image:
+	$(MAKE) -B CONCURRENCY=1 TIMERS=1 \
+	    C_STACK_RESERVE_BYTES=$(MEMORY_PRESSURE_STACK_RESERVE_BYTES) \
+	    START_SOURCE=$(CURDIR)/tests/ch32v006_process_oom_stress_self_test.erl \
+	    IMAGE_BASENAME=AtomVM-$(BOARD)-process-oom-stress-self-test image
+
+timer-oom-image:
+	$(MAKE) -B CONCURRENCY=1 TIMERS=1 \
+	    C_STACK_RESERVE_BYTES=$(MEMORY_PRESSURE_STACK_RESERVE_BYTES) \
+	    START_SOURCE=$(CURDIR)/tests/ch32v006_timer_oom_self_test.erl \
+	    IMAGE_BASENAME=AtomVM-$(BOARD)-timer-oom-self-test image
+
+binary-image:
+	$(MAKE) -B BINARIES=1 \
+	    START_SOURCE=$(CURDIR)/tests/ch32v006_binary_self_test.erl \
+	    IMAGE_BASENAME=AtomVM-$(BOARD)-binary-self-test image
+
+binary-oom-image:
+	$(MAKE) -B BINARIES=1 \
+	    START_SOURCE=$(CURDIR)/tests/ch32v006_binary_oom_self_test.erl \
+	    IMAGE_BASENAME=AtomVM-$(BOARD)-binary-oom-self-test image
+
+io-binary-image:
+	$(MAKE) -B PERIPHERALS=i2c \
+	    START_SOURCE=$(CURDIR)/tests/ch32v006_io_binary_self_test.erl \
+	    IMAGE_BASENAME=AtomVM-$(BOARD)-io-binary-self-test image
+
+peripheral-images:
+	$(MAKE) -B PERIPHERALS=gpio_irq \
+	    START_SOURCE=$(CURDIR)/tests/ch32v006_gpio_irq_self_test.erl \
+	    IMAGE_BASENAME=AtomVM-$(BOARD)-gpio-irq-self-test image
+	$(MAKE) -B PERIPHERALS=uart \
+	    START_SOURCE=$(CURDIR)/tests/ch32v006_uart_self_test.erl \
+	    IMAGE_BASENAME=AtomVM-$(BOARD)-uart-self-test image
+	$(MAKE) -B PERIPHERALS=adc \
+	    START_SOURCE=$(CURDIR)/tests/ch32v006_adc_self_test.erl \
+	    IMAGE_BASENAME=AtomVM-$(BOARD)-adc-self-test image
+	$(MAKE) -B PERIPHERALS=i2c \
+	    START_SOURCE=$(CURDIR)/tests/ch32v006_i2c_self_test.erl \
+	    IMAGE_BASENAME=AtomVM-$(BOARD)-i2c-self-test image
+	$(MAKE) -B PERIPHERALS=spi \
+	    START_SOURCE=$(CURDIR)/tests/ch32v006_spi_self_test.erl \
+	    IMAGE_BASENAME=AtomVM-$(BOARD)-spi-self-test image
+	$(MAKE) -B PERIPHERALS=pwm \
+	    START_SOURCE=$(CURDIR)/tests/ch32v006_pwm_self_test.erl \
+	    IMAGE_BASENAME=AtomVM-$(BOARD)-pwm-self-test image
+
+validation-tests: $(HOST_JIT_STAMP)
+	erlc -I $(ATOMVM_ROOT)/libs/jit/include -o $(HOST_JIT_DIR) tools/ch32v006_validate_tests.erl
+	erl -pa $(HOST_JIT_DIR) -noshell \
+	    -eval 'ok = ch32v006_validate_tests:run(), halt().'
+	mkdir -p $(BUILD_DIR)/unsupported
+	erl -pa $(HOST_JIT_DIR) -noshell \
+	    -eval 'ok = ch32v006_negative_tests:run("$(CURDIR)/tests/unsupported", "$(BUILD_DIR)/unsupported"), halt().'
 
 flash-uiap:
 	@test -x "$(MINICHLINK)/minichlink" || \
@@ -181,8 +482,31 @@ help:
 	@echo "  image              Build a distributable BIN/HEX/ELF image set (default)"
 	@echo "  release-image      Build a versioned BIN image and SHA-256 file"
 	@echo "  acceptance-images  Build language, GPIO, and default image sets"
+	@echo "  qualification-images  Run validation and build the complete acceptance matrix"
+	@echo "  arithmetic-boundary-image  Build constrained integer-overflow checks"
+	@echo "  combined-image     Build the timer, messaging, and GPIO application image"
+	@echo "  concurrency-image  Build the two-process acceptance image"
+	@echo "  concurrency-memory-image  Build the two-process memory-pressure image"
+	@echo "  concurrency-oom-image  Build the spawn allocation-failure image"
+	@echo "  concurrency-send-oom-image  Build the message allocation-failure image"
+	@echo "  external-send-image  Build the Elixir send NIF acceptance image (requires elixirc)"
+	@echo "  external-send-lifecycle-image  Build Elixir send process-lifecycle checks"
+	@echo "  external-send-badarg-image  Build Elixir send invalid-recipient checks"
+	@echo "  timer-image        Build the receive-timeout acceptance image"
+	@echo "  timer-memory-image  Build the timer memory-pressure image"
+	@echo "  timer-stress-image  Build the 256-cycle timer/message stress image"
+	@echo "  timer-wrap-image   Build the accelerated SysTick rollover image"
+	@echo "  timer-production-soak-image  Build the natural two-wrap (~24 minute) timer image"
+	@echo "  process-stress-image  Build the 256-child process cleanup stress image"
+	@echo "  process-oom-stress-image  Build repeated spawn-OOM recovery stress image"
+	@echo "  timer-oom-image    Build the timer allocation-failure image"
+	@echo "  binary-image       Build the experimental byte-binary acceptance image"
+	@echo "  binary-oom-image   Build the binary-allocation failure acceptance image"
+	@echo "  io-binary-image    Build the bounded peripheral-result binary acceptance image"
+	@echo "  peripheral-images  Build each experimental peripheral image independently"
+	@echo "  validation-tests   Check the CH32V006 native-code validator"
 	@echo "  flash-uiap         Flash the current image through the UIAP programmer"
 	@echo "  monitor-uiap       Open the UIAP SWIO terminal"
-	@echo "Variables: CH32FUN, MINICHLINK, START_SOURCE, START_BEAM_INPUT, FLASH_IMAGE, ATOMVM_VERSION, C_STACK_RESERVE_BYTES"
+	@echo "Variables: CH32FUN, MINICHLINK, START_SOURCE, START_BEAM_INPUT, FLASH_IMAGE, ATOMVM_VERSION, C_STACK_RESERVE_BYTES, MEMORY_PRESSURE_STACK_RESERVE_BYTES, MIN_FLASH_HEADROOM, ALLOW_SWIO_PIN, CONCURRENCY, TIMERS, BINARIES, MAX_PROCESSES, PERIPHERALS"
 
 include $(CH32FUN)/ch32fun.mk
